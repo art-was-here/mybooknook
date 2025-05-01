@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.artwashere.mybooknook">
     <application
-        android:label="mybooknook"
+        android:label="myBookNook"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
