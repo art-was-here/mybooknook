@@ -1,22 +1,9 @@
 import 'package:flutter/material.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends StatelessWidget {
   final Function(ThemeMode) onThemeChanged;
 
   const SettingsScreen({super.key, required this.onThemeChanged});
-
-  @override
-  _SettingsScreenState createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends State<SettingsScreen> {
-  bool _isDarkMode = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _isDarkMode = Theme.of(context).brightness == Brightness.dark;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,15 +13,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: ListView(
         children: [
-          SwitchListTile(
-            title: const Text('Dark Mode'),
-            value: _isDarkMode,
-            onChanged: (value) {
-              setState(() {
-                _isDarkMode = value;
-              });
-              widget.onThemeChanged(value ? ThemeMode.dark : ThemeMode.light);
-            },
+          ListTile(
+            title: const Text('Theme'),
+            subtitle: const Text('Choose app theme'),
+            trailing: DropdownButton<ThemeMode>(
+              value: Theme.of(context).brightness == Brightness.dark
+                  ? ThemeMode.dark
+                  : ThemeMode.light,
+              items: const [
+                DropdownMenuItem(
+                  value: ThemeMode.system,
+                  child: Text('System'),
+                ),
+                DropdownMenuItem(
+                  value: ThemeMode.light,
+                  child: Text('Light'),
+                ),
+                DropdownMenuItem(
+                  value: ThemeMode.dark,
+                  child: Text('Dark'),
+                ),
+              ],
+              onChanged: (ThemeMode? newMode) {
+                if (newMode != null) {
+                  onThemeChanged(newMode);
+                }
+              },
+            ),
           ),
         ],
       ),
