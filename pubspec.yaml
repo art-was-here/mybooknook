@@ -19,6 +19,13 @@ dependencies:
   permission_handler: ^11.1.0
   flutter_expandable_fab: ^2.0.0
   cloud_firestore: ^4.14.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/app_icon.png"
+  min_sdk_android: 21
 
 dev_dependencies:
   flutter_test:
