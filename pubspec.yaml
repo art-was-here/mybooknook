@@ -1,0 +1,29 @@
+name: google_signin
+description: A new Flutter project.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=2.18.0 <3.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  firebase_core: 2.24.2
+  firebase_auth: 4.16.0
+  google_sign_in: 6.2.1
+  googleapis: ^13.2.0
+  googleapis_auth: ^1.6.0
+  barcode_scan2: ^4.2.4
+  http: ^1.2.2
+  permission_handler: ^11.1.0
+  flutter_expandable_fab: ^2.0.0
+  cloud_firestore: ^4.14.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
