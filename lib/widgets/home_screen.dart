@@ -612,19 +612,19 @@ class _HomeScreenState extends State<HomeScreen> {
         openButtonBuilder: RotateFloatingActionButtonBuilder(
           child: const Icon(Icons.add),
           foregroundColor: Colors.white,
-          backgroundColor: const Color(0xFFE8F5E9), // Pale green
+          backgroundColor: const Color(0xFF7fb283), // Pale green
           shape: const CircleBorder(),
         ),
         closeButtonBuilder: DefaultFloatingActionButtonBuilder(
           child: const Icon(Icons.close),
           foregroundColor: Colors.white,
-          backgroundColor: const Color(0xFFE8F5E9), // Pale green
+          backgroundColor: const Color(0xFF527155), // Pale green
           shape: const CircleBorder(),
         ),
         children: [
           FloatingActionButton.small(
             heroTag: 'search_fab',
-            backgroundColor: const Color(0xFFC8E6C9), // Darker green
+            backgroundColor: const Color(0xFF527155), // Darker green
             foregroundColor: Colors.white,
             onPressed: () {
               print('Search FAB pressed');
@@ -640,7 +640,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           FloatingActionButton.small(
             heroTag: 'scan_fab',
-            backgroundColor: const Color(0xFFC8E6C9), // Darker green
+            backgroundColor: const Color(0xFF527155), // Darker green
             foregroundColor: Colors.white,
             onPressed: () {
               print('Scan FAB pressed');
