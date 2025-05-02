@@ -9,7 +9,10 @@ class Book {
   final String? publisher;
   final String? publishedDate;
   final int? pageCount;
-  final int userRating; // 0-5, 0 means unrated
+  final int userRating;
+  final DateTime? dateAdded;
+  final DateTime? releaseDate;
+  final List<String>? tags; // Add tags field
 
   Book({
     required this.title,
@@ -23,23 +26,10 @@ class Book {
     this.publishedDate,
     this.pageCount,
     this.userRating = 0,
+    this.dateAdded,
+    this.releaseDate,
+    this.tags,
   });
-
-  Map<String, dynamic> toMap() {
-    return {
-      'title': title,
-      'description': description,
-      'isbn': isbn,
-      'imageUrl': imageUrl,
-      'averageRating': averageRating,
-      'authors': authors,
-      'categories': categories,
-      'publisher': publisher,
-      'publishedDate': publishedDate,
-      'pageCount': pageCount,
-      'userRating': userRating,
-    };
-  }
 
   factory Book.fromMap(Map<String, dynamic> map) {
     return Book(
@@ -54,6 +44,29 @@ class Book {
       publishedDate: map['publishedDate'],
       pageCount: map['pageCount'],
       userRating: map['userRating'] ?? 0,
+      dateAdded: map['createdAt']?.toDate(),
+      releaseDate: map['publishedDate'] != null
+          ? DateTime.tryParse(map['publishedDate'])
+          : null,
+      tags: map['tags'] != null ? List<String>.from(map['tags']) : null,
     );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'title': title,
+      'description': description,
+      'isbn': isbn,
+      'imageUrl': imageUrl,
+      'averageRating': averageRating,
+      'authors': authors,
+      'categories': categories,
+      'publisher': publisher,
+      'publishedDate': publishedDate,
+      'pageCount': pageCount,
+      'userRating': userRating,
+      'createdAt': dateAdded ?? DateTime.now(),
+      'tags': tags,
+    };
   }
 }

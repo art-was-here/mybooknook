@@ -1,9 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:google_signin/widgets/settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'widgets/home_screen.dart';
+import 'widgets/settings.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,16 +30,28 @@ class _MyAppState extends State<MyApp> {
 
   Future<void> _loadAccentColor() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      final savedColor = prefs.getInt('accentColor');
-      _accentColor = savedColor != null ? Color(savedColor) : Colors.teal;
-    });
+    if (mounted) {
+      setState(() {
+        final savedColor = prefs.getInt('accentColor');
+        _accentColor = savedColor != null ? Color(savedColor) : Colors.teal;
+      });
+    }
   }
 
   void _onThemeChanged(ThemeMode themeMode) {
-    setState(() {
-      _themeMode = themeMode;
-    });
+    if (mounted) {
+      setState(() {
+        _themeMode = themeMode;
+      });
+    }
+  }
+
+  void _onAccentColorChanged(Color color) {
+    if (mounted) {
+      setState(() {
+        _accentColor = color;
+      });
+    }
   }
 
   @override
@@ -75,6 +87,7 @@ class _MyAppState extends State<MyApp> {
                   return HomeScreen(
                     onThemeChanged: _onThemeChanged,
                     accentColor: _accentColor,
+                    onAccentColorChanged: _onAccentColorChanged,
                   );
                 }
                 return const AuthScreen();
@@ -83,6 +96,7 @@ class _MyAppState extends State<MyApp> {
         '/settings': (context) => SettingsScreen(
               onThemeChanged: _onThemeChanged,
               initialAccentColor: _accentColor,
+              onAccentColorChanged: _onAccentColorChanged,
             ),
       },
     );

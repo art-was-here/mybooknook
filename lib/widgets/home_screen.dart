@@ -1,14 +1,15 @@
-import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_expandable_fab/flutter_expandable_fab.dart';
 import 'package:barcode_scan2/barcode_scan2.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/book.dart';
 import '../services/book_service.dart';
 import 'book_search_sheet.dart';
 import 'book_details_card.dart';
+import 'dart:async';
 
 // Helper class to store book and its list information
 class BookWithList {
@@ -16,17 +17,20 @@ class BookWithList {
   final String listId;
   final String listName;
 
-  BookWithList({required this.book, required this.listId, required this.listName});
+  BookWithList(
+      {required this.book, required this.listId, required this.listName});
 }
 
 class HomeScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
   final Color accentColor;
+  final Function(Color) onAccentColorChanged;
 
   const HomeScreen({
     super.key,
     required this.onThemeChanged,
     required this.accentColor,
+    required this.onAccentColorChanged,
   });
 
   @override
@@ -41,16 +45,23 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoading = true;
   late BookService _bookService;
   StreamSubscription<User?>? _authSubscription;
+  String _sortPreference = 'title';
 
   @override
   void initState() {
     super.initState();
     _bookService = BookService(context);
-    FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: false);
+    FirebaseFirestore.instance.settings =
+        const Settings(persistenceEnabled: false);
+    _loadSortPreference().then((_) async {
+      await _migrateBooks();
+      await _cleanupStrayBooks();
+    });
     print('HomeScreen initState: Waiting for auth state');
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user != null && mounted) {
-        print('HomeScreen initState: User authenticated: ${user.uid}, email: ${user.email}');
+        print(
+            'HomeScreen initState: User authenticated: ${user.uid}, email: ${user.email}');
         _initializeDefaultList();
       }
     }, onError: (e, stackTrace) {
@@ -63,6 +74,80 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     });
+  }
+
+  Future<void> _migrateBooks() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    print('Starting book migration for user: ${user.uid}');
+    try {
+      final listsSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('lists')
+          .get();
+      for (var listDoc in listsSnapshot.docs) {
+        final booksSnapshot = await listDoc.reference.collection('books').get();
+        for (var bookDoc in booksSnapshot.docs) {
+          final data = bookDoc.data();
+          bool needsUpdate = false;
+          Map<String, dynamic> updates = {};
+          if (data['userId'] != user.uid) {
+            updates['userId'] = user.uid;
+            needsUpdate = true;
+          }
+          if (data['tags'] == null) {
+            updates['tags'] = data['categories'] != null
+                ? List<String>.from(data['categories'])
+                : [];
+            needsUpdate = true;
+          }
+          if (needsUpdate) {
+            await bookDoc.reference.update(updates);
+            print('Updated book ${bookDoc.id} in list ${listDoc.id}: $updates');
+          } else {
+            print('No update needed for book ${bookDoc.id}');
+          }
+        }
+      }
+      print('Book migration completed');
+    } catch (e, stackTrace) {
+      print('Error during migration: $e');
+      print('Stack trace: $stackTrace');
+    }
+  }
+
+  Future<void> _cleanupStrayBooks() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    print('Starting cleanup of stray books for user: ${user.uid}');
+    try {
+      final booksSnapshot =
+          await FirebaseFirestore.instance.collectionGroup('books').get();
+      for (var bookDoc in booksSnapshot.docs) {
+        final path = bookDoc.reference.path;
+        if (!path.contains('/users/${user.uid}/lists/')) {
+          print('Found stray book at path: $path');
+          await bookDoc.reference.delete();
+          print('Deleted stray book: ${bookDoc.id} at $path');
+        } else {
+          print('Valid book at path: $path');
+        }
+      }
+      print('Stray books cleanup completed');
+    } catch (e, stackTrace) {
+      print('Error during stray books cleanup: $e');
+      print('Stack trace: $stackTrace');
+    }
+  }
+
+  Future<void> _loadSortPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _sortPreference = prefs.getString('sortPreference') ?? 'title';
+      });
+    }
   }
 
   @override
@@ -97,10 +182,8 @@ class _HomeScreenState extends State<HomeScreen> {
       print('Token refreshed successfully');
 
       print('Creating user document at /users/${user.uid}');
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .set({'createdAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+          {'createdAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
       print('User document created or updated successfully');
 
       print('Checking if lists collection exists at /users/${user.uid}/lists');
@@ -111,7 +194,8 @@ class _HomeScreenState extends State<HomeScreen> {
             .collection('lists')
             .limit(1)
             .get();
-        print('Lists collection query result: ${listsSnapshot.docs.length} documents found');
+        print(
+            'Lists collection query result: ${listsSnapshot.docs.length} documents found');
       } catch (e, stackTrace) {
         print('Error querying lists collection: $e');
         print('Stack trace: $stackTrace');
@@ -146,7 +230,8 @@ class _HomeScreenState extends State<HomeScreen> {
             });
           }
         } else {
-          print('Found existing default list with ID: ${snapshot.docs.first.id}');
+          print(
+              'Found existing default list with ID: ${snapshot.docs.first.id}');
           if (mounted) {
             setState(() {
               _selectedListId = snapshot.docs.first.id;
@@ -161,7 +246,8 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() {
             _errorMessage = 'Failed to load lists: $e';
             if (e.toString().contains('permission-denied')) {
-              _errorMessage = 'Permission denied accessing lists (Error Code: INIT). Please sign out and sign in again, or contact support if the issue persists.';
+              _errorMessage =
+                  'Permission denied accessing lists (Error Code: INIT). Please sign out and sign in again, or contact support if the issue persists.';
             }
           });
         }
@@ -172,7 +258,8 @@ class _HomeScreenState extends State<HomeScreen> {
         print('Error: _selectedListId is still null after initialization');
         throw Exception('Failed to initialize default list ID');
       }
-      print('Initialization complete: _selectedListId=$_selectedListId, _selectedListName=$_selectedListName');
+      print(
+          'Initialization complete: _selectedListId=$_selectedListId, _selectedListName=$_selectedListName');
     } catch (e, stackTrace) {
       print('Error initializing default list: $e');
       print('Stack trace: $stackTrace');
@@ -180,7 +267,8 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _errorMessage = 'Failed to load lists: $e';
           if (e.toString().contains('permission-denied')) {
-            _errorMessage = 'Permission denied accessing lists (Error Code: INIT). Please sign out and sign in again, or contact support if the issue persists.';
+            _errorMessage =
+                'Permission denied accessing lists (Error Code: INIT). Please sign out and sign in again, or contact support if the issue persists.';
           }
         });
       }
@@ -283,7 +371,8 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete List'),
-        content: Text('Are you sure you want to delete "$listName" and all its books?'),
+        content: Text(
+            'Are you sure you want to delete "$listName" and all its books?'),
         actions: [
           TextButton(
             onPressed: () {
@@ -367,18 +456,25 @@ class _HomeScreenState extends State<HomeScreen> {
         Book? book = await _bookService.fetchBookDetails(isbn);
         if (book != null) {
           print('Book found: ${book.title}');
+          final user = FirebaseAuth.instance.currentUser!;
           await FirebaseFirestore.instance
               .collection('users')
-              .doc(FirebaseAuth.instance.currentUser!.uid)
+              .doc(user.uid)
               .collection('lists')
               .doc(_selectedListId)
               .collection('books')
               .doc(isbn)
-              .set(book.toMap());
+              .set({
+            ...book.toMap(),
+            'userId': user.uid,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
           print('Book added via barcode: ${book.title}');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Book added to $_selectedListName: ${book.title}')),
+              SnackBar(
+                  content:
+                      Text('Book added to $_selectedListName: ${book.title}')),
             );
           }
         } else {
@@ -433,7 +529,8 @@ class _HomeScreenState extends State<HomeScreen> {
               print('Stack trace: ${snapshot.stackTrace}');
               String errorMessage = 'Error loading lists: ${snapshot.error}';
               if (snapshot.error.toString().contains('permission-denied')) {
-                errorMessage = 'Permission denied loading lists (Error Code: MENU). Please sign out and sign in again.';
+                errorMessage =
+                    'Permission denied loading lists (Error Code: MENU). Please sign out and sign in again.';
               }
               return ListTile(
                 title: Text(errorMessage),
@@ -494,7 +591,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    print('Building HomeScreen for user: ${user?.email ?? "No user"}');
+    print(
+        'Building HomeScreen for user: ${user?.email ?? "No user"}, UID: ${user?.uid ?? "No UID"}');
+    print(
+        'Selected List: $_selectedListName, ID: $_selectedListId, Sort: $_sortPreference');
     return Scaffold(
       appBar: AppBar(
         title: PopupMenuButton<String>(
@@ -577,7 +677,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           if (mounted) {
                             print('Signing out due to error');
                             await FirebaseAuth.instance.signOut();
-                            await FirebaseAuth.instance.setPersistence(Persistence.NONE);
+                            await FirebaseAuth.instance
+                                .setPersistence(Persistence.NONE);
                             print('Signed out and cleared persistence');
                           }
                         },
@@ -607,7 +708,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               if (mounted) {
                                 print('Signing out due to null list ID');
                                 await FirebaseAuth.instance.signOut();
-                                await FirebaseAuth.instance.setPersistence(Persistence.NONE);
+                                await FirebaseAuth.instance
+                                    .setPersistence(Persistence.NONE);
                                 print('Signed out and cleared persistence');
                               }
                             },
@@ -619,18 +721,22 @@ class _HomeScreenState extends State<HomeScreen> {
                   : FutureBuilder<Map<String, String>>(
                       future: _fetchListNames(user!.uid),
                       builder: (context, listNamesSnapshot) {
-                        if (listNamesSnapshot.connectionState == ConnectionState.waiting) {
+                        if (listNamesSnapshot.connectionState ==
+                            ConnectionState.waiting) {
                           print('FutureBuilder: Waiting for list names');
-                          return const Center(child: CircularProgressIndicator());
+                          return const Center(
+                              child: CircularProgressIndicator());
                         }
                         if (listNamesSnapshot.hasError) {
-                          print('FutureBuilder error: ${listNamesSnapshot.error}');
+                          print(
+                              'FutureBuilder error: ${listNamesSnapshot.error}');
                           print('Stack trace: ${listNamesSnapshot.stackTrace}');
                           return Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text('Error loading lists: ${listNamesSnapshot.error}'),
+                                Text(
+                                    'Error loading lists: ${listNamesSnapshot.error}'),
                                 const SizedBox(height: 16),
                                 ElevatedButton(
                                   onPressed: () {
@@ -646,12 +752,27 @@ class _HomeScreenState extends State<HomeScreen> {
                           );
                         }
                         final listNames = listNamesSnapshot.data ?? {};
-                        print('FutureBuilder: List names loaded: ${listNames.length} lists');
+                        print(
+                            'FutureBuilder: List names loaded: ${listNames.length} lists');
 
                         return StreamBuilder<QuerySnapshot>(
                           stream: _selectedListName == 'Home' && user != null
-                              ? (FirebaseFirestore.instance.collectionGroup('books').snapshots()
-                                  as Stream<QuerySnapshot>)
+                              ? FirebaseFirestore.instance
+                                  .collectionGroup('books')
+                                  .where('userId', isEqualTo: user.uid)
+                                  .orderBy(
+                                    _sortPreference == 'date_added'
+                                        ? 'createdAt'
+                                        : _sortPreference == 'release_date'
+                                            ? 'publishedDate'
+                                            : _sortPreference,
+                                    descending: _sortPreference ==
+                                                'date_added' ||
+                                            _sortPreference == 'release_date'
+                                        ? true
+                                        : false,
+                                  )
+                                  .snapshots()
                               : user != null
                                   ? FirebaseFirestore.instance
                                       .collection('users')
@@ -659,20 +780,42 @@ class _HomeScreenState extends State<HomeScreen> {
                                       .collection('lists')
                                       .doc(_selectedListId)
                                       .collection('books')
+                                      .orderBy(
+                                        _sortPreference == 'date_added'
+                                            ? 'createdAt'
+                                            : _sortPreference == 'release_date'
+                                                ? 'publishedDate'
+                                                : _sortPreference,
+                                        descending:
+                                            _sortPreference == 'date_added' ||
+                                                    _sortPreference ==
+                                                        'release_date'
+                                                ? true
+                                                : false,
+                                      )
                                       .snapshots()
                                   : Stream.empty(),
                           builder: (context, snapshot) {
-                            print('StreamBuilder: Connection state: ${snapshot.connectionState}');
-                            print('StreamBuilder: Query type: ${_selectedListName == 'Home' ? 'collectionGroup(books)' : 'users/${user?.uid ?? "no-user"}/lists/$_selectedListId/books'}');
-                            if (snapshot.connectionState == ConnectionState.waiting) {
+                            print(
+                                'StreamBuilder: Connection state: ${snapshot.connectionState}');
+                            print(
+                                'StreamBuilder: Query type: ${_selectedListName == 'Home' ? 'collectionGroup(books)' : 'users/${user?.uid ?? "no-user"}/lists/$_selectedListId/books'}');
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
                               print('StreamBuilder: Waiting for data');
-                              return const Center(child: CircularProgressIndicator());
+                              return const Center(
+                                  child: CircularProgressIndicator());
                             }
                             if (snapshot.hasError) {
                               print('StreamBuilder error: ${snapshot.error}');
                               print('Stack trace: ${snapshot.stackTrace}');
-                              String errorMessage = 'Error loading books: ${snapshot.error}';
-                              if (snapshot.error.toString().contains('permission-denied')) {
+                              print(
+                                  'Query: ${_selectedListName == 'Home' ? 'collectionGroup(books)' : 'users/${user?.uid}/lists/$_selectedListId/books'}');
+                              String errorMessage =
+                                  'Error loading books: ${snapshot.error}';
+                              if (snapshot.error
+                                  .toString()
+                                  .contains('permission-denied')) {
                                 errorMessage =
                                     'Permission denied loading books (Error Code: STREAM). Please sign out and sign in again, or contact support if the issue persists.';
                               }
@@ -686,9 +829,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                       onPressed: () async {
                                         if (mounted && user != null) {
                                           print('Retrying StreamBuilder');
-                                          print('Refreshing auth token before retry');
+                                          print(
+                                              'Refreshing auth token before retry');
                                           await user.getIdToken(true);
-                                          print('Token refreshed for StreamBuilder retry');
+                                          print(
+                                              'Token refreshed for StreamBuilder retry');
                                           setState(() {});
                                         }
                                       },
@@ -698,10 +843,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                     TextButton(
                                       onPressed: () async {
                                         if (mounted) {
-                                          print('Signing out due to StreamBuilder error');
+                                          print(
+                                              'Signing out due to StreamBuilder error');
                                           await FirebaseAuth.instance.signOut();
-                                          await FirebaseAuth.instance.setPersistence(Persistence.NONE);
-                                          print('Signed out and cleared persistence');
                                         }
                                       },
                                       child: const Text('Sign Out'),
@@ -710,23 +854,29 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               );
                             }
-                            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                            if (!snapshot.hasData ||
+                                snapshot.data!.docs.isEmpty) {
                               print('StreamBuilder: No books found');
-                              return const Center(child: Text('No books found'));
+                              return const Center(
+                                  child: Text('No books found'));
                             }
-                            print('StreamBuilder: Books found: ${snapshot.data!.docs.length}');
-                            print('StreamBuilder: Document paths: ${snapshot.data!.docs.map((doc) => doc.reference.path).toList()}');
+                            print(
+                                'StreamBuilder: Books found: ${snapshot.data!.docs.length}');
+                            print(
+                                'StreamBuilder: Document paths: ${snapshot.data!.docs.map((doc) => doc.reference.path).toList()}');
 
                             List<BookWithList> booksWithList = [];
                             for (var doc in snapshot.data!.docs) {
-                              final book = Book.fromMap(doc.data() as Map<String, dynamic>);
+                              final book = Book.fromMap(
+                                  doc.data() as Map<String, dynamic>);
                               String listId;
                               String listName;
                               if (_selectedListName == 'Home') {
                                 final pathParts = doc.reference.path.split('/');
-                                listId = pathParts[pathParts.length - 3]; // /users/uid/lists/listId/books/bookId
+                                listId = pathParts[pathParts.length - 3];
                                 listName = listNames[listId] ?? 'Unknown List';
-                                print('Book: ${book.title}, List ID: $listId, List Name: $listName, Path: ${doc.reference.path}');
+                                print(
+                                    'Book: ${book.title}, List ID: $listId, List Name: $listName, Path: ${doc.reference.path}');
                               } else {
                                 listId = _selectedListId!;
                                 listName = _selectedListName;
@@ -738,20 +888,48 @@ class _HomeScreenState extends State<HomeScreen> {
                               ));
                             }
 
-                            // Group books by listName and sort by listName
+                            if (_selectedListName == 'Home') {
+                              booksWithList.sort((a, b) {
+                                final aBook = a.book;
+                                final bBook = b.book;
+                                switch (_sortPreference) {
+                                  case 'title':
+                                    return aBook.title
+                                        .toLowerCase()
+                                        .compareTo(bBook.title.toLowerCase());
+                                  case 'author':
+                                    return (aBook.authors?.join(', ') ?? '')
+                                        .toLowerCase()
+                                        .compareTo(
+                                            (bBook.authors?.join(', ') ?? '')
+                                                .toLowerCase());
+                                  case 'date_added':
+                                    return (bBook.dateAdded ?? DateTime.now())
+                                        .compareTo(
+                                            aBook.dateAdded ?? DateTime.now());
+                                  case 'release_date':
+                                    return (bBook.releaseDate ?? DateTime.now())
+                                        .compareTo(aBook.releaseDate ??
+                                            DateTime.now());
+                                  default:
+                                    return 0;
+                                }
+                              });
+                            }
+
                             final groupedBooks = <String, List<BookWithList>>{};
                             for (var bookWithList in booksWithList) {
                               groupedBooks
                                   .putIfAbsent(bookWithList.listName, () => [])
                                   .add(bookWithList);
                             }
-                            final sortedListNames = groupedBooks.keys.toList()..sort();
+                            final sortedListNames = groupedBooks.keys.toList()
+                              ..sort();
 
-                            // Flatten the grouped books into a list for ListView, adding headers
                             final displayItems = <dynamic>[];
                             for (var listName in sortedListNames) {
-                              displayItems.add(listName); // Header
-                              displayItems.addAll(groupedBooks[listName]!); // Books
+                              displayItems.add(listName);
+                              displayItems.addAll(groupedBooks[listName]!);
                             }
 
                             return ListView.builder(
@@ -759,9 +937,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               itemBuilder: (context, index) {
                                 final item = displayItems[index];
                                 if (item is String) {
-                                  // Render header with divider
                                   return Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       if (index > 0) const Divider(),
                                       Padding(
@@ -772,7 +950,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                           style: Theme.of(context)
                                               .textTheme
                                               .titleMedium
-                                              ?.copyWith(fontWeight: FontWeight.bold),
+                                              ?.copyWith(
+                                                  fontWeight: FontWeight.bold),
                                         ),
                                       ),
                                     ],
@@ -786,8 +965,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                             width: 50,
                                             height: 75,
                                             fit: BoxFit.cover,
-                                            errorBuilder: (context, error, stackTrace) =>
-                                                const Icon(Icons.book, size: 50),
+                                            errorBuilder:
+                                                (context, error, stackTrace) =>
+                                                    const Icon(Icons.book,
+                                                        size: 50),
                                           )
                                         : const Icon(Icons.book, size: 50),
                                     title: Text(book.title),
@@ -844,7 +1025,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 print('Toggling FAB closed');
                 state.toggle();
               }
-              BookSearchSheet.show(context, _selectedListId, _selectedListName, _bookService);
+              BookSearchSheet.show(
+                  context, _selectedListId, _selectedListName, _bookService);
             },
             child: const Icon(Icons.search),
             tooltip: 'Search by Title or ISBN',
@@ -870,7 +1052,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Fetch list names to map listId to listName
   Future<Map<String, String>> _fetchListNames(String userId) async {
     if (!mounted) return {};
     print('Fetching list names for user: $userId');

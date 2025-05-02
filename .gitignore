@@ -46,3 +46,5 @@ app.*.map.json
 
 # keep it secret, keep it safe
 android/app/google-services.json
+firestore.rules
+firestore.indexes.json
