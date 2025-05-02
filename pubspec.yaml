@@ -14,7 +14,7 @@ dependencies:
   google_sign_in: 6.2.1
   googleapis: ^13.2.0
   googleapis_auth: ^1.6.0
-  barcode_scan2: ^4.2.4
+  barcode_scan2: ^4.5.1
   http: ^1.2.2
   permission_handler: ^11.1.0
   flutter_expandable_fab: ^2.0.0
@@ -22,6 +22,8 @@ dependencies:
   flutter_launcher_icons: ^0.13.1
   flutter_colorpicker: ^1.1.0
   shared_preferences: ^2.5.3
+  sqflite: ^2.4.2
+  path: ^1.9.1
 
 flutter_launcher_icons:
   android: true

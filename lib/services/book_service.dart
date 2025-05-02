@@ -27,7 +27,8 @@ class BookService {
         print('No Google user available');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Failed to authenticate with Google Books API. Please try signing in again.'),
+            content: Text(
+                'Failed to authenticate with Google Books API. Please try signing in again.'),
           ),
         );
         return null;
@@ -42,7 +43,8 @@ class BookService {
       print('Error initializing Books API: $e');
       print('Stack trace: $stackTrace');
       String errorMessage = 'Error initializing Books API: $e';
-      if (e.toString().contains('403') || e.toString().contains('access_denied')) {
+      if (e.toString().contains('403') ||
+          e.toString().contains('access_denied')) {
         errorMessage =
             'Access blocked: myBookNook is not verified with Google. Contact the developer to add you as a tester or wait for verification.';
       }
@@ -88,7 +90,8 @@ class BookService {
       print('Error fetching book: $e');
       print('Stack trace: $stackTrace');
       String errorMessage = 'Error fetching book: $e';
-      if (e.toString().contains('403') || e.toString().contains('access_denied')) {
+      if (e.toString().contains('403') ||
+          e.toString().contains('access_denied')) {
         errorMessage =
             'Access blocked: myBookNook is not verified with Google. Contact the developer to add you as a tester or wait for verification.';
       }
@@ -156,8 +159,10 @@ class BookService {
     }
   }
 
-  Future<void> updateBookRating(String isbn, String bookTitle, int newRating, String selectedListName, String? selectedListId) async {
-    print('Updating rating for book: $bookTitle, ISBN: $isbn, Rating: $newRating');
+  Future<void> updateBookRating(String isbn, String bookTitle, int newRating,
+      String selectedListName, String? selectedListId) async {
+    print(
+        'Updating rating for book: $bookTitle, ISBN: $isbn, Rating: $newRating');
     final user = FirebaseAuth.instance.currentUser!;
     try {
       if (selectedListName == 'myBookNook') {
@@ -181,7 +186,8 @@ class BookService {
             .doc(listId)
             .collection('books')
             .doc(isbn)
-            .update({'userRating': newRating}).timeout(const Duration(seconds: 5), onTimeout: () {
+            .update({'userRating': newRating}).timeout(
+                const Duration(seconds: 5), onTimeout: () {
           print('Rating update timed out');
           throw Exception('Rating update timed out');
         });
@@ -195,11 +201,13 @@ class BookService {
             .doc(selectedListId)
             .collection('books')
             .doc(isbn)
-            .update({'userRating': newRating}).timeout(const Duration(seconds: 5), onTimeout: () {
+            .update({'userRating': newRating}).timeout(
+                const Duration(seconds: 5), onTimeout: () {
           print('Rating update timed out');
           throw Exception('Rating update timed out');
         });
-        print('Rating updated in $selectedListName: $bookTitle, Rating: $newRating');
+        print(
+            'Rating updated in $selectedListName: $bookTitle, Rating: $newRating');
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Rated $bookTitle: $newRating stars')),
@@ -209,7 +217,8 @@ class BookService {
       print('Stack trace: $stackTrace');
       String errorMessage = 'Error updating rating: $e';
       if (e.toString().contains('permission-denied')) {
-        errorMessage = 'Permission denied updating rating. Please sign out and sign in again.';
+        errorMessage =
+            'Permission denied updating rating. Please sign out and sign in again.';
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(errorMessage)),
@@ -218,7 +227,8 @@ class BookService {
     }
   }
 
-  Future<void> deleteBook(String isbn, String bookTitle, String selectedListName, String? selectedListId) async {
+  Future<void> deleteBook(String isbn, String bookTitle,
+      String selectedListName, String? selectedListId) async {
     print('Deleting book: $bookTitle, ISBN: $isbn');
     final user = FirebaseAuth.instance.currentUser!;
     try {
@@ -270,7 +280,8 @@ class BookService {
       print('Stack trace: $stackTrace');
       String errorMessage = 'Error deleting book: $e';
       if (e.toString().contains('permission-denied')) {
-        errorMessage = 'Permission denied deleting book. Please sign out and sign in again.';
+        errorMessage =
+            'Permission denied deleting book. Please sign out and sign in again.';
       }
       throw Exception(errorMessage);
     }

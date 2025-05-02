@@ -1,15 +1,16 @@
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_expandable_fab/flutter_expandable_fab.dart';
-import 'package:barcode_scan2/barcode_scan2.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/book.dart';
 import '../services/book_service.dart';
+import '../services/barcode_service.dart';
 import 'book_search_sheet.dart';
 import 'book_details_card.dart';
 import 'dart:async';
+import 'package:flutter_expandable_fab/flutter_expandable_fab.dart';
 
 // Helper class to store book and its list information
 class BookWithList {
@@ -46,34 +47,276 @@ class _HomeScreenState extends State<HomeScreen> {
   late BookService _bookService;
   StreamSubscription<User?>? _authSubscription;
   String _sortPreference = 'title';
+  Map<String, String> _listNamesCache = {};
+  DateTime? _listNamesLastUpdated;
+  List<BookWithList> _loadedBooks = [];
+  Database? _database;
+  bool _isOffline = false;
+  final Map<String, Book> _bookCache = {};
+  final Map<String, DateTime> _bookCacheTimestamps = {};
+  static const Duration _cacheExpiry = Duration(hours: 1);
 
   @override
   void initState() {
     super.initState();
-    _bookService = BookService(context);
-    FirebaseFirestore.instance.settings =
-        const Settings(persistenceEnabled: false);
-    _loadSortPreference().then((_) async {
-      await _migrateBooks();
-      await _cleanupStrayBooks();
-    });
-    print('HomeScreen initState: Waiting for auth state');
+    print('HomeScreen initState called');
+
+    // Initialize services first
+    _initializeFirestore();
+    _initializeDatabase();
+    _ensureIndexes();
+    _bookService = BookService(this.context);
+
+    // Check authentication state immediately
+    final currentUser = FirebaseAuth.instance.currentUser;
+    print('Current user: ${currentUser?.uid ?? "No user"}');
+
+    if (currentUser != null) {
+      print('User already authenticated, initializing...');
+      _initializeDefaultList().then((_) {
+        print('Default list initialized, loading books...');
+        _loadBooks();
+      });
+    } else {
+      print('No authenticated user, waiting for auth state changes...');
+    }
+
+    // Listen for auth state changes
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+      print('Auth state changed: ${user?.uid ?? "No user"}');
       if (user != null && mounted) {
-        print(
-            'HomeScreen initState: User authenticated: ${user.uid}, email: ${user.email}');
-        _initializeDefaultList();
+        print('New user authenticated, initializing...');
+        _initializeDefaultList().then((_) {
+          print('Default list initialized, loading books...');
+          _loadBooks();
+        });
       }
     }, onError: (e, stackTrace) {
+      print('Error in auth state listener: $e');
+      print('Stack trace: $stackTrace');
       if (mounted) {
-        print('HomeScreen initState: Error waiting for auth state: $e');
-        print('Stack trace: $stackTrace');
         setState(() {
           _errorMessage = 'Authentication error: $e. Please sign in again.';
           _isLoading = false;
         });
       }
     });
+  }
+
+  Future<void> _initializeFirestore() async {
+    try {
+      await FirebaseFirestore.instance.enablePersistence();
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      );
+    } catch (e) {
+      print('Error enabling Firestore persistence: $e');
+    }
+  }
+
+  Future<void> _initializeDatabase() async {
+    try {
+      final databasePath = await getDatabasesPath();
+      final path = join(databasePath, 'mybooknook.db');
+
+      _database = await openDatabase(
+        path,
+        version: 1,
+        onCreate: (Database db, int version) async {
+          await db.execute('''
+            CREATE TABLE books(
+              id TEXT PRIMARY KEY,
+              title TEXT,
+              authors TEXT,
+              description TEXT,
+              imageUrl TEXT,
+              isbn TEXT,
+              publishedDate TEXT,
+              publisher TEXT,
+              pageCount INTEGER,
+              categories TEXT,
+              tags TEXT,
+              listId TEXT,
+              listName TEXT,
+              userId TEXT,
+              createdAt TEXT,
+              lastUpdated TEXT
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE lists(
+              id TEXT PRIMARY KEY,
+              name TEXT,
+              createdAt TEXT,
+              lastUpdated TEXT
+            )
+          ''');
+        },
+      );
+    } catch (e) {
+      print('Error initializing database: $e');
+    }
+  }
+
+  Future<void> _cacheBook(Book book, String listId, String listName) async {
+    if (_database == null) return;
+
+    try {
+      final now = DateTime.now();
+      final bookData = {
+        'id': book.isbn,
+        'title': book.title,
+        'authors': book.authors?.join(','),
+        'description': book.description ?? '',
+        'imageUrl': book.imageUrl,
+        'isbn': book.isbn,
+        'publishedDate': book.publishedDate,
+        'publisher': book.publisher,
+        'pageCount': book.pageCount,
+        'categories': book.categories?.join(','),
+        'tags': book.tags?.join(','),
+        'listId': listId,
+        'listName': listName,
+        'userId': FirebaseAuth.instance.currentUser?.uid,
+        'createdAt': now.toIso8601String(),
+        'lastUpdated': now.toIso8601String(),
+      };
+
+      // Update in-memory cache
+      _bookCache[book.isbn] = book;
+      _bookCacheTimestamps[book.isbn] = now;
+
+      // Update SQLite cache
+      await _database!.insert(
+        'books',
+        bookData,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      print('Error caching book: $e');
+    }
+  }
+
+  Future<Book?> _getCachedBook(String isbn) async {
+    // Check in-memory cache first
+    final cachedBook = _bookCache[isbn];
+    final cacheTime = _bookCacheTimestamps[isbn];
+
+    if (cachedBook != null && cacheTime != null) {
+      if (DateTime.now().difference(cacheTime) < _cacheExpiry) {
+        return cachedBook;
+      } else {
+        // Remove expired cache entry
+        _bookCache.remove(isbn);
+        _bookCacheTimestamps.remove(isbn);
+      }
+    }
+
+    // Check SQLite cache
+    if (_database != null) {
+      try {
+        final List<Map<String, dynamic>> maps = await _database!.query(
+          'books',
+          where: 'isbn = ?',
+          whereArgs: [isbn],
+        );
+
+        if (maps.isNotEmpty) {
+          final data = maps.first;
+          final book = Book(
+            title: data['title'] as String,
+            authors: (data['authors'] as String?)?.split(','),
+            description: data['description'] as String? ?? '',
+            imageUrl: data['imageUrl'] as String?,
+            isbn: data['isbn'] as String,
+            publishedDate: data['publishedDate'] as String?,
+            publisher: data['publisher'] as String?,
+            pageCount: data['pageCount'] as int?,
+            categories: (data['categories'] as String?)?.split(','),
+            tags: (data['tags'] as String?)?.split(','),
+          );
+
+          // Update in-memory cache
+          _bookCache[isbn] = book;
+          _bookCacheTimestamps[isbn] = DateTime.now();
+
+          return book;
+        }
+      } catch (e) {
+        print('Error getting cached book: $e');
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> _cacheList(String listId, String listName) async {
+    if (_database == null) return;
+
+    try {
+      final now = DateTime.now();
+      await _database!.insert(
+        'lists',
+        {
+          'id': listId,
+          'name': listName,
+          'createdAt': now.toIso8601String(),
+          'lastUpdated': now.toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      print('Error caching list: $e');
+    }
+  }
+
+  Future<List<BookWithList>> _getCachedBooks(String listId) async {
+    if (_database == null) return [];
+
+    try {
+      final List<Map<String, dynamic>> maps = await _database!.query(
+        'books',
+        where: listId == 'Home' ? null : 'listId = ?',
+        whereArgs: listId == 'Home' ? null : [listId],
+      );
+
+      return maps.map((map) {
+        final book = Book(
+          title: map['title'] as String,
+          authors: (map['authors'] as String?)?.split(','),
+          description: map['description'] as String? ?? '',
+          imageUrl: map['imageUrl'] as String?,
+          isbn: map['isbn'] as String,
+          publishedDate: map['publishedDate'] as String?,
+          publisher: map['publisher'] as String?,
+          pageCount: map['pageCount'] as int?,
+          categories: (map['categories'] as String?)?.split(','),
+          tags: (map['tags'] as String?)?.split(','),
+        );
+
+        return BookWithList(
+          book: book,
+          listId: map['listId'] as String,
+          listName: map['listName'] as String,
+        );
+      }).toList();
+    } catch (e) {
+      print('Error getting cached books: $e');
+      return [];
+    }
+  }
+
+  Future<Map<String, String>> _getCachedLists() async {
+    if (_database == null) return {};
+
+    try {
+      final List<Map<String, dynamic>> maps = await _database!.query('lists');
+      return {for (var map in maps) map['id']: map['name']};
+    } catch (e) {
+      print('Error getting cached lists: $e');
+      return {};
+    }
   }
 
   Future<void> _migrateBooks() async {
@@ -86,12 +329,17 @@ class _HomeScreenState extends State<HomeScreen> {
           .doc(user.uid)
           .collection('lists')
           .get();
+
       for (var listDoc in listsSnapshot.docs) {
         final booksSnapshot = await listDoc.reference.collection('books').get();
+        final batch = FirebaseFirestore.instance.batch();
+        int batchCount = 0;
+
         for (var bookDoc in booksSnapshot.docs) {
           final data = bookDoc.data();
           bool needsUpdate = false;
           Map<String, dynamic> updates = {};
+
           if (data['userId'] != user.uid) {
             updates['userId'] = user.uid;
             needsUpdate = true;
@@ -102,12 +350,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 : [];
             needsUpdate = true;
           }
+
           if (needsUpdate) {
-            await bookDoc.reference.update(updates);
-            print('Updated book ${bookDoc.id} in list ${listDoc.id}: $updates');
-          } else {
-            print('No update needed for book ${bookDoc.id}');
+            batch.update(bookDoc.reference, updates);
+            batchCount++;
+
+            // Firestore has a limit of 500 operations per batch
+            if (batchCount >= 500) {
+              await batch.commit();
+              batchCount = 0;
+            }
           }
+        }
+
+        // Commit any remaining operations
+        if (batchCount > 0) {
+          await batch.commit();
         }
       }
       print('Book migration completed');
@@ -124,15 +382,27 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final booksSnapshot =
           await FirebaseFirestore.instance.collectionGroup('books').get();
+      final batch = FirebaseFirestore.instance.batch();
+      int batchCount = 0;
+
       for (var bookDoc in booksSnapshot.docs) {
         final path = bookDoc.reference.path;
         if (!path.contains('/users/${user.uid}/lists/')) {
           print('Found stray book at path: $path');
-          await bookDoc.reference.delete();
-          print('Deleted stray book: ${bookDoc.id} at $path');
-        } else {
-          print('Valid book at path: $path');
+          batch.delete(bookDoc.reference);
+          batchCount++;
+
+          // Firestore has a limit of 500 operations per batch
+          if (batchCount >= 500) {
+            await batch.commit();
+            batchCount = 0;
+          }
         }
+      }
+
+      // Commit any remaining operations
+      if (batchCount > 0) {
+        await batch.commit();
       }
       print('Stray books cleanup completed');
     } catch (e, stackTrace) {
@@ -160,14 +430,16 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _initializeDefaultList() async {
     if (!mounted) return;
     print('Initializing default list');
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
+      print('No authenticated user found');
       if (mounted) {
-        print('No authenticated user found');
         setState(() {
           _errorMessage = 'No authenticated user. Please sign in again.';
           _isLoading = false;
@@ -175,417 +447,243 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       return;
     }
-    print('Authenticated user: UID=${user.uid}, email=${user.email}');
-    try {
-      print('Forcing authentication token refresh');
-      await user.getIdToken(true);
-      print('Token refreshed successfully');
 
-      print('Creating user document at /users/${user.uid}');
+    print('Authenticated user: UID=${user.uid}, email=${user.email}');
+
+    try {
+      print('Creating/updating user document');
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
           {'createdAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
-      print('User document created or updated successfully');
 
-      print('Checking if lists collection exists at /users/${user.uid}/lists');
-      try {
-        final listsSnapshot = await FirebaseFirestore.instance
+      print('Checking for Home list');
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('lists')
+          .where('name', isEqualTo: 'Home')
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        print('Creating new Home list');
+        final listRef = await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
             .collection('lists')
-            .limit(1)
-            .get();
-        print(
-            'Lists collection query result: ${listsSnapshot.docs.length} documents found');
-      } catch (e, stackTrace) {
-        print('Error querying lists collection: $e');
-        print('Stack trace: $stackTrace');
-        throw Exception('Failed to query lists collection: $e');
-      }
-
-      print('Querying for Home list at /users/${user.uid}/lists');
-      try {
-        final snapshot = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .collection('lists')
-            .where('name', isEqualTo: 'Home')
-            .limit(1)
-            .get();
-        print('Home query completed: ${snapshot.docs.length} list(s) found');
-        if (snapshot.docs.isEmpty) {
-          print('No Home list found, creating new list');
-          final listRef = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .collection('lists')
-              .add({
-            'name': 'Home',
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-          print('Created default list with ID: ${listRef.id}');
-          if (mounted) {
-            setState(() {
-              _selectedListId = listRef.id;
-              _selectedListName = 'Home';
-            });
-          }
-        } else {
-          print(
-              'Found existing default list with ID: ${snapshot.docs.first.id}');
-          if (mounted) {
-            setState(() {
-              _selectedListId = snapshot.docs.first.id;
-              _selectedListName = 'Home';
-            });
-          }
-        }
-      } catch (e, stackTrace) {
-        print('Error querying or creating Home list: $e');
-        print('Stack trace: $stackTrace');
+            .add({
+          'name': 'Home',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        print('Created Home list with ID: ${listRef.id}');
         if (mounted) {
           setState(() {
-            _errorMessage = 'Failed to load lists: $e';
-            if (e.toString().contains('permission-denied')) {
-              _errorMessage =
-                  'Permission denied accessing lists (Error Code: INIT). Please sign out and sign in again, or contact support if the issue persists.';
-            }
+            _selectedListId = listRef.id;
+            _selectedListName = 'Home';
           });
         }
-        throw Exception('Failed to query or create Home list: $e');
+      } else {
+        print('Found existing Home list with ID: ${snapshot.docs.first.id}');
+        if (mounted) {
+          setState(() {
+            _selectedListId = snapshot.docs.first.id;
+            _selectedListName = 'Home';
+          });
+        }
       }
-
-      if (_selectedListId == null && mounted) {
-        print('Error: _selectedListId is still null after initialization');
-        throw Exception('Failed to initialize default list ID');
-      }
-      print(
-          'Initialization complete: _selectedListId=$_selectedListId, _selectedListName=$_selectedListName');
     } catch (e, stackTrace) {
       print('Error initializing default list: $e');
       print('Stack trace: $stackTrace');
       if (mounted) {
         setState(() {
-          _errorMessage = 'Failed to load lists: $e';
-          if (e.toString().contains('permission-denied')) {
-            _errorMessage =
-                'Permission denied accessing lists (Error Code: INIT). Please sign out and sign in again, or contact support if the issue persists.';
-          }
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
+          _errorMessage = 'Failed to initialize: $e';
           _isLoading = false;
         });
       }
-      print('Initialization finished, _isLoading=false');
     }
   }
 
-  Future<void> _addNewList() async {
-    if (!mounted) return;
-    print('Opening new list dialog');
+  Future<void> _addNewList(BuildContext context) async {
     final TextEditingController controller = TextEditingController();
-    final String? newListName = await showDialog<String>(
+    final result = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (BuildContext dialogContext) => AlertDialog(
         title: const Text('New List'),
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(hintText: 'Enter list name'),
-          autofocus: true,
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              print('Cancel new list');
-              Navigator.pop(context);
-            },
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                print('Creating new list: ${controller.text.trim()}');
-                Navigator.pop(context, controller.text.trim());
-              } else {
-                print('Empty list name');
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('List name cannot be empty')),
-                );
-              }
-            },
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
             child: const Text('Create'),
           ),
         ],
       ),
     );
 
-    if (newListName != null && mounted) {
-      print('New list name received: $newListName');
-      final user = FirebaseAuth.instance.currentUser!;
-      try {
-        print('Creating new list at /users/${user.uid}/lists');
-        final listRef = await FirebaseFirestore.instance
+    if (result != null && result.isNotEmpty) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final listRef = FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
             .collection('lists')
-            .add({
-          'name': newListName,
+            .doc();
+
+        await listRef.set({
+          'name': result,
           'createdAt': FieldValue.serverTimestamp(),
         });
-        print('New list created with ID: ${listRef.id}');
-        if (mounted) {
-          setState(() {
-            _selectedListId = listRef.id;
-            _selectedListName = newListName;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('List "$newListName" created')),
-          );
-        }
-      } catch (e, stackTrace) {
-        print('Error creating new list: $e');
-        print('Stack trace: $stackTrace');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error creating list: $e')),
-          );
-        }
       }
     }
   }
 
-  Future<void> _deleteList(String listId, String listName) async {
-    if (!mounted) return;
-    print('Attempting to delete list: $listName (ID: $listId)');
-    if (listName == 'Home') {
-      print('Cannot delete default list');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot delete the default "Home" list')),
-      );
-      return;
-    }
-
-    final bool? confirmDelete = await showDialog<bool>(
+  Future<void> _deleteList(BuildContext context, String listId) async {
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (BuildContext dialogContext) => AlertDialog(
         title: const Text('Delete List'),
-        content: Text(
-            'Are you sure you want to delete "$listName" and all its books?'),
+        content: const Text('Are you sure you want to delete this list?'),
         actions: [
           TextButton(
-            onPressed: () {
-              print('Cancel delete list');
-              Navigator.pop(context, false);
-            },
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              print('Confirm delete list: $listName');
-              Navigator.pop(context, true);
-            },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
           ),
         ],
       ),
     );
 
-    if (confirmDelete == true && mounted) {
-      print('Deleting list: $listName');
-      final user = FirebaseAuth.instance.currentUser!;
-      try {
-        print('Deleting list at /users/${user.uid}/lists/$listId');
+    if (confirmed == true) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
         await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
             .collection('lists')
             .doc(listId)
             .delete();
-        print('List deleted: $listName');
-        if (_selectedListId == listId && mounted) {
-          print('Selected list deleted, reinitializing default list');
-          await _initializeDefaultList();
-        }
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('List "$listName" deleted')),
-          );
-        }
-      } catch (e, stackTrace) {
-        print('Error deleting list: $e');
-        print('Stack trace: $stackTrace');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error deleting list: $e')),
-          );
-        }
       }
     }
   }
 
-  Future<void> scanBarcode() async {
+  Future<void> _showAddToListDialog(BuildContext context, Book book) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final listsSnapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('lists')
+        .get();
+
+    final lists = listsSnapshot.docs.map((doc) {
+      final data = doc.data();
+      return {
+        'id': doc.id,
+        'name': data['name'] as String? ?? 'Unknown List',
+      };
+    }).toList();
+
     if (!mounted) return;
-    if (_selectedListId == null) {
-      print('No list selected for barcode scan');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select or create a list first')),
-      );
-      return;
-    }
 
-    try {
-      print('Starting barcode scan');
-      var status = await Permission.camera.request();
-      if (!status.isGranted) {
-        print('Camera permission denied');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Camera permission denied')),
-          );
-        }
-        return;
-      }
+    final selectedList = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Add to List'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: lists.length,
+            itemBuilder: (context, index) {
+              final list = lists[index];
+              return ListTile(
+                title: Text(list['name']!),
+                onTap: () => Navigator.pop(dialogContext, list),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
 
-      var result = await BarcodeScanner.scan();
-      String isbn = result.rawContent;
-      print('Scanned ISBN: $isbn');
+    if (selectedList != null) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('lists')
+            .doc(selectedList['id'])
+            .collection('books')
+            .doc(book.isbn)
+            .set({
+          'title': book.title,
+          'authors': book.authors,
+          'description': book.description,
+          'imageUrl': book.imageUrl,
+          'isbn': book.isbn,
+          'publishedDate': book.publishedDate,
+          'publisher': book.publisher,
+          'pageCount': book.pageCount,
+          'categories': book.categories,
+          'tags': book.tags,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
 
-      if (isbn.isNotEmpty && mounted) {
-        Book? book = await _bookService.fetchBookDetails(isbn);
-        if (book != null) {
-          print('Book found: ${book.title}');
-          final user = FirebaseAuth.instance.currentUser!;
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .collection('lists')
-              .doc(_selectedListId)
-              .collection('books')
-              .doc(isbn)
-              .set({
-            ...book.toMap(),
-            'userId': user.uid,
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-          print('Book added via barcode: ${book.title}');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content:
-                      Text('Book added to $_selectedListName: ${book.title}')),
-            );
-          }
-        } else {
-          print('Book not found for ISBN: $isbn');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Book not found')),
-            );
-          }
-        }
-      } else {
-        print('No ISBN scanned');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No ISBN detected')),
-          );
-        }
-      }
-    } catch (e, stackTrace) {
-      print('Error during barcode scan: $e');
-      print('Stack trace: $stackTrace');
-      if (mounted) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error scanning barcode: $e')),
+          SnackBar(content: Text('Added to ${selectedList['name']}')),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error adding book: $e')),
         );
       }
     }
   }
 
-  List<PopupMenuEntry<String>> _buildListMenuItems() {
-    print('Building list menu items');
-    return [
-      PopupMenuItem<String>(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseAuth.instance.currentUser != null
-              ? FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(FirebaseAuth.instance.currentUser!.uid)
-                  .collection('lists')
-                  .orderBy('createdAt')
-                  .snapshots()
-              : Stream.empty(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              print('List menu: Waiting for data');
-              return const ListTile(
-                title: Text('Loading lists...'),
-              );
-            }
-            if (snapshot.hasError) {
-              print('List menu error: ${snapshot.error}');
-              print('Stack trace: ${snapshot.stackTrace}');
-              String errorMessage = 'Error loading lists: ${snapshot.error}';
-              if (snapshot.error.toString().contains('permission-denied')) {
-                errorMessage =
-                    'Permission denied loading lists (Error Code: MENU). Please sign out and sign in again.';
-              }
-              return ListTile(
-                title: Text(errorMessage),
-                trailing: IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: () {
-                    if (mounted) {
-                      print('Retrying list menu load');
-                      setState(() {});
-                    }
-                  },
-                ),
-              );
-            }
-            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-              print('List menu: No lists found');
-              return const ListTile(
-                title: Text('No lists available'),
-              );
-            }
-            print('List menu: Lists found: ${snapshot.data!.docs.length}');
-            return Column(
-              children: snapshot.data!.docs.map((doc) {
-                final listId = doc.id;
-                final listName = doc['name'] as String;
-                return PopupMenuItem<String>(
-                  value: listId,
-                  onTap: () {
-                    print('Selected list: $listName (ID: $listId)');
-                    if (mounted) {
-                      setState(() {
-                        _selectedListId = listId;
-                        _selectedListName = listName;
-                      });
-                    }
-                  },
-                  child: ListTile(
-                    title: Text(listName),
-                    trailing: listName == 'Home'
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () {
-                              print('Delete list button pressed: $listName');
-                              _deleteList(listId, listName);
-                            },
-                          ),
-                  ),
-                );
-              }).toList(),
-            );
-          },
-        ),
-      ),
-    ];
+  Future<void> scanBarcode(BuildContext context) async {
+    try {
+      final barcode = await BarcodeService.scanBarcode();
+      if (barcode != null) {
+        final book = await _bookService.searchBooks(barcode);
+        if (book.isNotEmpty) {
+          if (!mounted) return;
+          await _showAddToListDialog(context, book.first);
+        } else {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Book not found')),
+          );
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error scanning barcode: $e')),
+      );
+    }
+  }
+
+  Future<void> _onBookTap(BuildContext context, Book book) async {
+    if (!mounted) return;
+    BookDetailsCard.show(
+        context, book, _selectedListName, _bookService, _selectedListId);
   }
 
   @override
@@ -601,10 +699,10 @@ class _HomeScreenState extends State<HomeScreen> {
           onSelected: (value) async {
             if (value == 'add_list' && mounted) {
               print('Add new list selected');
-              await _addNewList();
+              await _addNewList(context);
             }
           },
-          itemBuilder: (context) => [
+          itemBuilder: (BuildContext popupContext) => [
             PopupMenuItem<String>(
               value: 'add_list',
               child: Row(
@@ -616,7 +714,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const PopupMenuDivider(),
-            ..._buildListMenuItems(),
+            ..._buildListMenuItems(context),
           ],
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -650,7 +748,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 FirebaseAuth.instance.signOut();
               }
             },
-            itemBuilder: (context) => [
+            itemBuilder: (BuildContext popupContext) => [
               PopupMenuItem(
                 value: 'sign_out',
                 child: Text('Sign out (${user?.email ?? "No user"})'),
@@ -725,7 +823,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     )
                   : FutureBuilder<Map<String, String>>(
                       future: _fetchListNames(user!.uid),
-                      builder: (context, listNamesSnapshot) {
+                      builder: (BuildContext builderContext,
+                          AsyncSnapshot<Map<String, String>>
+                              listNamesSnapshot) {
                         if (listNamesSnapshot.connectionState ==
                             ConnectionState.waiting) {
                           print('FutureBuilder: Waiting for list names');
@@ -760,271 +860,102 @@ class _HomeScreenState extends State<HomeScreen> {
                         print(
                             'FutureBuilder: List names loaded: ${listNames.length} lists');
 
-                        return StreamBuilder<QuerySnapshot>(
-                          stream: _selectedListName == 'Home' && user != null
-                              ? FirebaseFirestore.instance
-                                  .collectionGroup('books')
-                                  .where('userId', isEqualTo: user.uid)
-                                  .orderBy(
-                                    _sortPreference == 'date_added'
-                                        ? 'createdAt'
-                                        : _sortPreference == 'release_date'
-                                            ? 'publishedDate'
-                                            : _sortPreference,
-                                    descending: _sortPreference ==
-                                                'date_added' ||
-                                            _sortPreference == 'release_date'
-                                        ? true
-                                        : false,
-                                  )
-                                  .snapshots()
-                              : user != null
-                                  ? FirebaseFirestore.instance
-                                      .collection('users')
-                                      .doc(user.uid)
-                                      .collection('lists')
-                                      .doc(_selectedListId)
-                                      .collection('books')
-                                      .orderBy(
-                                        _sortPreference == 'date_added'
-                                            ? 'createdAt'
-                                            : _sortPreference == 'release_date'
-                                                ? 'publishedDate'
-                                                : _sortPreference,
-                                        descending:
-                                            _sortPreference == 'date_added' ||
-                                                    _sortPreference ==
-                                                        'release_date'
-                                                ? true
-                                                : false,
-                                      )
-                                      .snapshots()
-                                  : Stream.empty(),
-                          builder: (context, snapshot) {
-                            print(
-                                'StreamBuilder: Connection state: ${snapshot.connectionState}');
-                            print(
-                                'StreamBuilder: Query type: ${_selectedListName == 'Home' ? 'collectionGroup(books)' : 'users/${user?.uid ?? "no-user"}/lists/$_selectedListId/books'}');
-                            if (snapshot.connectionState ==
-                                ConnectionState.waiting) {
-                              print('StreamBuilder: Waiting for data');
-                              return const Center(
-                                  child: CircularProgressIndicator());
-                            }
-                            if (snapshot.hasError) {
-                              print('StreamBuilder error: ${snapshot.error}');
-                              print('Stack trace: ${snapshot.stackTrace}');
-                              print(
-                                  'Query: ${_selectedListName == 'Home' ? 'collectionGroup(books)' : 'users/${user?.uid}/lists/$_selectedListId/books'}');
-                              String errorMessage =
-                                  'Error loading books: ${snapshot.error}';
-                              if (snapshot.error
-                                  .toString()
-                                  .contains('permission-denied')) {
-                                errorMessage =
-                                    'Permission denied loading books (Error Code: STREAM). Please sign out and sign in again, or contact support if the issue persists.';
-                              }
-                              return Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(errorMessage),
-                                    const SizedBox(height: 16),
-                                    ElevatedButton(
-                                      onPressed: () async {
-                                        if (mounted && user != null) {
-                                          print('Retrying StreamBuilder');
-                                          print(
-                                              'Refreshing auth token before retry');
-                                          await user.getIdToken(true);
-                                          print(
-                                              'Token refreshed for StreamBuilder retry');
-                                          setState(() {});
-                                        }
-                                      },
-                                      child: const Text('Retry'),
+                        if (_loadedBooks.isEmpty) {
+                          return const Center(child: Text('No books found'));
+                        }
+
+                        final groupedBooks = <String, List<BookWithList>>{};
+                        for (var bookWithList in _loadedBooks) {
+                          groupedBooks
+                              .putIfAbsent(bookWithList.listName, () => [])
+                              .add(bookWithList);
+                        }
+                        final sortedListNames = groupedBooks.keys.toList()
+                          ..sort();
+
+                        final displayItems = <dynamic>[];
+                        for (var listName in sortedListNames) {
+                          displayItems.add(listName);
+                          displayItems.addAll(groupedBooks[listName]!);
+                        }
+
+                        return ListView.builder(
+                          itemCount: displayItems.length,
+                          itemBuilder: (BuildContext listContext, int index) {
+                            final item = displayItems[index];
+                            if (item is String) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (index > 0) const SizedBox(height: 1.0),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16.0, vertical: 8.0),
+                                    child: Text(
+                                      item,
+                                      style: Theme.of(listContext)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                              fontWeight: FontWeight.bold),
                                     ),
-                                    const SizedBox(height: 8),
-                                    TextButton(
-                                      onPressed: () async {
-                                        if (mounted) {
-                                          print(
-                                              'Signing out due to StreamBuilder error');
-                                          await FirebaseAuth.instance.signOut();
-                                        }
-                                      },
-                                      child: const Text('Sign Out'),
-                                    ),
-                                  ],
+                                  ),
+                                ],
+                              );
+                            } else if (item is BookWithList) {
+                              final book = item.book;
+                              final isFirstBook = index > 0 &&
+                                  displayItems[index - 1] is String;
+                              final isLastBook =
+                                  index < displayItems.length - 1 &&
+                                      displayItems[index + 1] is String;
+
+                              return Card(
+                                elevation: 2,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.only(
+                                    topLeft:
+                                        Radius.circular(isFirstBook ? 12 : 0),
+                                    topRight:
+                                        Radius.circular(isFirstBook ? 12 : 0),
+                                    bottomLeft:
+                                        Radius.circular(isLastBook ? 12 : 0),
+                                    bottomRight:
+                                        Radius.circular(isLastBook ? 12 : 0),
+                                  ),
+                                ),
+                                margin: EdgeInsets.only(
+                                  left: 16.0,
+                                  right: 16.0,
+                                  top: isFirstBook ? 8.0 : 0,
+                                  bottom: isLastBook ? 8.0 : 0,
+                                ),
+                                child: ListTile(
+                                  leading: book.imageUrl != null
+                                      ? Image.network(
+                                          book.imageUrl!,
+                                          width: 50,
+                                          height: 75,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (BuildContext
+                                                      imageContext,
+                                                  Object error,
+                                                  StackTrace? stackTrace) =>
+                                              const Icon(Icons.book, size: 50),
+                                        )
+                                      : const Icon(Icons.book, size: 50),
+                                  title: Text(book.title),
+                                  subtitle: Text(
+                                    book.authors?.join(', ') ??
+                                        'Unknown Author',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  onTap: () => _onBookTap(context, book),
                                 ),
                               );
                             }
-                            if (!snapshot.hasData ||
-                                snapshot.data!.docs.isEmpty) {
-                              print('StreamBuilder: No books found');
-                              return const Center(
-                                  child: Text('No books found'));
-                            }
-                            print(
-                                'StreamBuilder: Books found: ${snapshot.data!.docs.length}');
-                            print(
-                                'StreamBuilder: Document paths: ${snapshot.data!.docs.map((doc) => doc.reference.path).toList()}');
-
-                            List<BookWithList> booksWithList = [];
-                            for (var doc in snapshot.data!.docs) {
-                              final book = Book.fromMap(
-                                  doc.data() as Map<String, dynamic>);
-                              String listId;
-                              String listName;
-                              if (_selectedListName == 'Home') {
-                                final pathParts = doc.reference.path.split('/');
-                                listId = pathParts[pathParts.length - 3];
-                                listName = listNames[listId] ?? 'Unknown List';
-                                print(
-                                    'Book: ${book.title}, List ID: $listId, List Name: $listName, Path: ${doc.reference.path}');
-                              } else {
-                                listId = _selectedListId!;
-                                listName = _selectedListName;
-                              }
-                              booksWithList.add(BookWithList(
-                                book: book,
-                                listId: listId,
-                                listName: listName,
-                              ));
-                            }
-
-                            if (_selectedListName == 'Home') {
-                              booksWithList.sort((a, b) {
-                                final aBook = a.book;
-                                final bBook = b.book;
-                                switch (_sortPreference) {
-                                  case 'title':
-                                    return aBook.title
-                                        .toLowerCase()
-                                        .compareTo(bBook.title.toLowerCase());
-                                  case 'author':
-                                    return (aBook.authors?.join(', ') ?? '')
-                                        .toLowerCase()
-                                        .compareTo(
-                                            (bBook.authors?.join(', ') ?? '')
-                                                .toLowerCase());
-                                  case 'date_added':
-                                    return (bBook.dateAdded ?? DateTime.now())
-                                        .compareTo(
-                                            aBook.dateAdded ?? DateTime.now());
-                                  case 'release_date':
-                                    return (bBook.releaseDate ?? DateTime.now())
-                                        .compareTo(aBook.releaseDate ??
-                                            DateTime.now());
-                                  default:
-                                    return 0;
-                                }
-                              });
-                            }
-
-                            final groupedBooks = <String, List<BookWithList>>{};
-                            for (var bookWithList in booksWithList) {
-                              groupedBooks
-                                  .putIfAbsent(bookWithList.listName, () => [])
-                                  .add(bookWithList);
-                            }
-                            final sortedListNames = groupedBooks.keys.toList()
-                              ..sort();
-
-                            final displayItems = <dynamic>[];
-                            for (var listName in sortedListNames) {
-                              displayItems.add(listName);
-                              displayItems.addAll(groupedBooks[listName]!);
-                            }
-
-                            return ListView.builder(
-                              itemCount: displayItems.length,
-                              itemBuilder: (context, index) {
-                                final item = displayItems[index];
-                                if (item is String) {
-                                  return Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      if (index > 0)
-                                        const SizedBox(height: 1.0),
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 16.0, vertical: 8.0),
-                                        child: Text(
-                                          item,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .titleMedium
-                                              ?.copyWith(
-                                                  fontWeight: FontWeight.bold),
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                } else if (item is BookWithList) {
-                                  final book = item.book;
-                                  final isFirstBook = index > 0 &&
-                                      displayItems[index - 1] is String;
-                                  final isLastBook =
-                                      index < displayItems.length - 1 &&
-                                          displayItems[index + 1] is String;
-
-                                  return Card(
-                                    elevation: 2,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.only(
-                                        topLeft: Radius.circular(
-                                            isFirstBook ? 12 : 0),
-                                        topRight: Radius.circular(
-                                            isFirstBook ? 12 : 0),
-                                        bottomLeft: Radius.circular(
-                                            isLastBook ? 12 : 0),
-                                        bottomRight: Radius.circular(
-                                            isLastBook ? 12 : 0),
-                                      ),
-                                    ),
-                                    margin: EdgeInsets.only(
-                                      left: 16.0,
-                                      right: 16.0,
-                                      top: isFirstBook ? 8.0 : 0,
-                                      bottom: isLastBook ? 8.0 : 0,
-                                    ),
-                                    child: ListTile(
-                                      leading: book.imageUrl != null
-                                          ? Image.network(
-                                              book.imageUrl!,
-                                              width: 50,
-                                              height: 75,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (context, error,
-                                                      stackTrace) =>
-                                                  const Icon(Icons.book,
-                                                      size: 50),
-                                            )
-                                          : const Icon(Icons.book, size: 50),
-                                      title: Text(book.title),
-                                      subtitle: Text(
-                                        book.description,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      onTap: () {
-                                        print('Tapped book: ${book.title}');
-                                        BookDetailsCard.show(
-                                          context,
-                                          book,
-                                          item.listName,
-                                          _bookService,
-                                          item.listId,
-                                        );
-                                      },
-                                    ),
-                                  );
-                                }
-                                return const SizedBox.shrink();
-                              },
-                            );
+                            return const SizedBox.shrink();
                           },
                         );
                       },
@@ -1075,7 +1006,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 print('Toggling FAB closed');
                 state.toggle();
               }
-              scanBarcode();
+              scanBarcode(context);
             },
             child: const Icon(Icons.camera_alt),
             tooltip: 'Scan Barcode',
@@ -1087,6 +1018,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<Map<String, String>> _fetchListNames(String userId) async {
     if (!mounted) return {};
+
+    // Return cached data if it's less than 5 minutes old
+    if (_listNamesCache.isNotEmpty &&
+        _listNamesLastUpdated != null &&
+        DateTime.now().difference(_listNamesLastUpdated!) <
+            const Duration(minutes: 5)) {
+      print('Returning cached list names');
+      return _listNamesCache;
+    }
+
     print('Fetching list names for user: $userId');
     try {
       final snapshot = await FirebaseFirestore.instance
@@ -1095,15 +1036,235 @@ class _HomeScreenState extends State<HomeScreen> {
           .collection('lists')
           .get();
       print('List names query completed: ${snapshot.docs.length} lists found');
-      final listNames = <String, String>{};
+      _listNamesCache.clear();
       for (var doc in snapshot.docs) {
-        listNames[doc.id] = doc['name'] as String;
+        _listNamesCache[doc.id] = doc['name'] as String;
       }
-      return listNames;
+      _listNamesLastUpdated = DateTime.now();
+      return _listNamesCache;
     } catch (e, stackTrace) {
       print('Error fetching list names: $e');
       print('Stack trace: $stackTrace');
       throw Exception('Failed to fetch list names: $e');
     }
+  }
+
+  // Update the cache when lists are modified
+  Future<void> _updateListNamesCache(String listId, String listName) async {
+    _listNamesCache[listId] = listName;
+    _listNamesLastUpdated = DateTime.now();
+  }
+
+  // Clear cache when needed
+  void _clearListNamesCache() {
+    _listNamesCache.clear();
+    _listNamesLastUpdated = null;
+  }
+
+  // Add composite indexes for Firestore queries
+  Future<void> _ensureIndexes() async {
+    try {
+      // Index for Home view books query
+      await FirebaseFirestore.instance.collection('users').doc('_indexes').set({
+        'indexes': {
+          'books_home': {
+            'fields': [
+              {'fieldPath': 'userId', 'order': 'ASCENDING'},
+              {'fieldPath': 'createdAt', 'order': 'DESCENDING'},
+            ],
+            'queryScope': 'COLLECTION_GROUP',
+          },
+          'books_list': {
+            'fields': [
+              {'fieldPath': 'createdAt', 'order': 'DESCENDING'},
+            ],
+            'queryScope': 'COLLECTION',
+          },
+        },
+      }, SetOptions(merge: true));
+    } catch (e) {
+      print('Error creating indexes: $e');
+    }
+  }
+
+  Future<void> _loadBooks() async {
+    if (!mounted) return;
+    print('Starting to load books');
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print('Cannot load books: No authenticated user');
+      return;
+    }
+
+    if (_selectedListId == null) {
+      print('Cannot load books: No selected list ID');
+      return;
+    }
+
+    print('Loading books for user: ${user.uid}, list: $_selectedListId');
+
+    try {
+      Query query = _selectedListName == 'Home'
+          ? FirebaseFirestore.instance
+              .collectionGroup('books')
+              .where('userId', isEqualTo: user.uid)
+              .orderBy('createdAt', descending: true)
+          : FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .collection('lists')
+              .doc(_selectedListId)
+              .collection('books')
+              .orderBy('createdAt', descending: true);
+
+      print('Executing Firestore query');
+      final snapshot = await query.get();
+      print('Query completed: ${snapshot.docs.length} documents found');
+
+      if (snapshot.docs.isEmpty) {
+        print('No books found in Firestore');
+        if (mounted) {
+          setState(() {
+            _loadedBooks = [];
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
+      final listNames = await _fetchListNames(user.uid);
+      print('List names loaded: ${listNames.length} lists');
+
+      final books = snapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        print('Processing book: ${data['title']}');
+
+        final book = Book(
+          title: data['title'] as String? ?? 'Unknown Title',
+          authors: (data['authors'] as List<dynamic>?)?.cast<String>(),
+          description: data['description'] as String? ?? '',
+          imageUrl: data['imageUrl'] as String?,
+          isbn: data['isbn'] as String? ?? '',
+          publishedDate: data['publishedDate'] as String?,
+          publisher: data['publisher'] as String?,
+          pageCount: data['pageCount'] as int?,
+          categories: (data['categories'] as List<dynamic>?)?.cast<String>(),
+          tags: (data['tags'] as List<dynamic>?)?.cast<String>(),
+        );
+
+        String listId;
+        String listName;
+        if (_selectedListName == 'Home') {
+          final pathParts = doc.reference.path.split('/');
+          listId = pathParts[pathParts.length - 3];
+          listName = listNames[listId] ?? 'Unknown List';
+        } else {
+          listId = _selectedListId!;
+          listName = _selectedListName;
+        }
+
+        return BookWithList(
+          book: book,
+          listId: listId,
+          listName: listName,
+        );
+      }).toList();
+
+      print('Successfully processed ${books.length} books');
+      if (mounted) {
+        setState(() {
+          _loadedBooks = books;
+          _isLoading = false;
+        });
+      }
+    } catch (e, stackTrace) {
+      print('Error loading books: $e');
+      print('Stack trace: $stackTrace');
+      if (mounted) {
+        setState(() {
+          _isOffline = true;
+          _isLoading = false;
+          _errorMessage = 'Error loading books: $e';
+        });
+      }
+    }
+  }
+
+  List<PopupMenuEntry<String>> _buildListMenuItems(BuildContext context) {
+    return [
+      PopupMenuItem<String>(
+        child: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseAuth.instance.currentUser != null
+              ? FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(FirebaseAuth.instance.currentUser!.uid)
+                  .collection('lists')
+                  .orderBy('createdAt')
+                  .snapshots()
+              : Stream.empty(),
+          builder: (BuildContext streamContext,
+              AsyncSnapshot<QuerySnapshot> snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const ListTile(
+                title: Text('Loading lists...'),
+              );
+            }
+            if (snapshot.hasError) {
+              String errorMessage = 'Error loading lists: ${snapshot.error}';
+              if (snapshot.error.toString().contains('permission-denied')) {
+                errorMessage =
+                    'Permission denied loading lists. Please sign out and sign in again.';
+              }
+              return ListTile(
+                title: Text(errorMessage),
+                trailing: IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: () {
+                    if (mounted) {
+                      setState(() {});
+                    }
+                  },
+                ),
+              );
+            }
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return const ListTile(
+                title: Text('No lists available'),
+              );
+            }
+            return Column(
+              children: snapshot.data!.docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final listId = doc.id;
+                final listName = data['name'] as String? ?? 'Unknown List';
+                return PopupMenuItem<String>(
+                  value: listId,
+                  onTap: () {
+                    if (mounted) {
+                      setState(() {
+                        _selectedListId = listId;
+                        _selectedListName = listName;
+                      });
+                    }
+                  },
+                  child: ListTile(
+                    title: Text(listName),
+                    trailing: listName == 'Home'
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () {
+                              _deleteList(context, listId);
+                            },
+                          ),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+      ),
+    ];
   }
 }

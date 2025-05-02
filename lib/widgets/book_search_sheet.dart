@@ -65,7 +65,8 @@ class BookSearchSheet {
                               )
                             : const Icon(Icons.book, size: 50),
                         title: Text(book.title),
-                        subtitle: Text(book.authors?.join(', ') ?? 'Unknown Author'),
+                        subtitle:
+                            Text(book.authors?.join(', ') ?? 'Unknown Author'),
                         onTap: () async {
                           try {
                             final user = FirebaseAuth.instance.currentUser!;
@@ -78,13 +79,15 @@ class BookSearchSheet {
                                 .doc(book.isbn)
                                 .set({
                               ...book.toMap(),
-                              'userId': user.uid, // Add userId for security rules
+                              'userId':
+                                  user.uid, // Add userId for security rules
                               'createdAt': FieldValue.serverTimestamp(),
                             });
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: Text('Added "${book.title}" to $listName'),
+                                  content: Text(
+                                      'Added "${book.title}" to $listName'),
                                 ),
                               );
                               Navigator.pop(context);
@@ -92,7 +95,8 @@ class BookSearchSheet {
                           } catch (e) {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Error adding book: $e')),
+                                SnackBar(
+                                    content: Text('Error adding book: $e')),
                               );
                             }
                           }
