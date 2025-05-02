@@ -113,7 +113,8 @@ class AuthScreen extends StatelessWidget {
         child: ElevatedButton(
           onPressed: () async {
             try {
-              await FirebaseAuth.instance.signInWithProvider(GoogleAuthProvider());
+              await FirebaseAuth.instance
+                  .signInWithProvider(GoogleAuthProvider());
             } catch (e) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text('Error signing in: $e')),

@@ -4,6 +4,7 @@ class Book {
   final String isbn;
   final String? imageUrl;
   final double? averageRating;
+  final int? ratingsCount;
   final List<String>? authors;
   final List<String>? categories;
   final String? publisher;
@@ -20,6 +21,7 @@ class Book {
     required this.isbn,
     this.imageUrl,
     this.averageRating,
+    this.ratingsCount,
     this.authors,
     this.categories,
     this.publisher,
@@ -38,8 +40,12 @@ class Book {
       isbn: map['isbn'] ?? '',
       imageUrl: map['imageUrl'],
       averageRating: map['averageRating']?.toDouble(),
-      authors: map['authors'] != null ? List<String>.from(map['authors']) : null,
-      categories: map['categories'] != null ? List<String>.from(map['categories']) : null,
+      ratingsCount: map['ratingsCount'],
+      authors:
+          map['authors'] != null ? List<String>.from(map['authors']) : null,
+      categories: map['categories'] != null
+          ? List<String>.from(map['categories'])
+          : null,
       publisher: map['publisher'],
       publishedDate: map['publishedDate'],
       pageCount: map['pageCount'],
@@ -59,6 +65,7 @@ class Book {
       'isbn': isbn,
       'imageUrl': imageUrl,
       'averageRating': averageRating,
+      'ratingsCount': ratingsCount,
       'authors': authors,
       'categories': categories,
       'publisher': publisher,

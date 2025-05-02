@@ -114,18 +114,32 @@ class BookService {
     }
 
     try {
-      print('Searching Google Books API with query: $query');
+      // Simplified search query to ensure we get results
+      final enhancedQuery = query;
+      print('Searching Google Books API with query: $enhancedQuery');
+
       final response = await booksApi.volumes.list(
-        query,
-        orderBy: 'relevance',
-        printType: 'books',
+        enhancedQuery,
+        orderBy: 'relevance', // Sort by relevance
+        printType: 'books', // Only return books
+        maxResults: 40, // Get more results
+        langRestrict: 'en', // Restrict to English books
       );
+
       print('API response received: items=${response.items?.length ?? 0}');
       if (response.items == null || response.items!.isEmpty) {
         print('No books found for query: $query');
         return [];
       }
-      return response.items!.map((item) {
+
+      // Less restrictive filtering to ensure we get results
+      final results = response.items!
+          .where((item) =>
+              item.volumeInfo != null &&
+              item.volumeInfo!.title != null &&
+              item.volumeInfo!.authors != null &&
+              item.volumeInfo!.authors!.isNotEmpty)
+          .map((item) {
         final bookData = item.volumeInfo!;
         String isbn = '';
         if (bookData.industryIdentifiers != null) {
@@ -142,19 +156,43 @@ class BookService {
           isbn: isbn,
           imageUrl: bookData.imageLinks?.thumbnail,
           averageRating: bookData.averageRating,
+          ratingsCount: bookData.ratingsCount,
           authors: bookData.authors,
           categories: bookData.categories,
           publisher: bookData.publisher,
           publishedDate: bookData.publishedDate,
           pageCount: bookData.pageCount,
         );
-      }).toList();
+      }).toList()
+        ..sort((a, b) {
+          // First try to sort by number of ratings (popularity)
+          final aRatingsCount = a.ratingsCount ?? 0;
+          final bRatingsCount = b.ratingsCount ?? 0;
+          if (aRatingsCount != bRatingsCount) {
+            return bRatingsCount.compareTo(aRatingsCount);
+          }
+
+          // If ratings counts are equal, sort by average rating
+          final aRating = a.averageRating ?? 0;
+          final bRating = b.averageRating ?? 0;
+          if (aRating != bRating) {
+            return bRating.compareTo(aRating);
+          }
+
+          // If both ratings are equal, sort by title
+          return a.title.compareTo(b.title);
+        });
+
+      return results;
     } catch (e, stackTrace) {
       print('Error searching books: $e');
       print('Stack trace: $stackTrace');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error searching books: $e')),
-      );
+      // Only show snackbar if the widget is still mounted
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error searching books: $e')),
+        );
+      }
       return [];
     }
   }

@@ -11,6 +11,7 @@ import 'book_search_sheet.dart';
 import 'book_details_card.dart';
 import 'dart:async';
 import 'package:flutter_expandable_fab/flutter_expandable_fab.dart';
+import 'dart:convert';
 
 // Helper class to store book and its list information
 class BookWithList {
@@ -38,7 +39,7 @@ class HomeScreen extends StatefulWidget {
   _HomeScreenState createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   String? _selectedListId;
   String _selectedListName = 'Home';
   final _fabKey = GlobalKey<ExpandableFabState>();
@@ -56,6 +57,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final Map<String, DateTime> _bookCacheTimestamps = {};
   static const Duration _cacheExpiry = Duration(hours: 1);
   final Map<String, bool> _expandedLists = {};
+  final Map<String, AnimationController> _animationControllers = {};
+  final Map<String, Animation<double>> _listAnimations = {};
 
   @override
   void initState() {
@@ -67,6 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _initializeDatabase();
     _ensureIndexes();
     _bookService = BookService(this.context);
+    _loadExpandedStates();
 
     // Check authentication state immediately
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -424,7 +428,12 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _authSubscription?.cancel();
-    print('HomeScreen dispose: Canceled auth subscription');
+    // Dispose all animation controllers
+    for (var controller in _animationControllers.values) {
+      controller.dispose();
+    }
+    print(
+        'HomeScreen dispose: Canceled auth subscription and animation controllers');
     super.dispose();
   }
 
@@ -1051,115 +1060,128 @@ class _HomeScreenState extends State<HomeScreen> {
                               final isExpanded =
                                   _expandedLists[listName] ?? true;
 
-                              if (!isExpanded) {
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (index > 0) const SizedBox(height: 1.0),
-                                    Card(
-                                      elevation: 2,
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 16.0,
-                                                vertical: 8.0),
-                                            child: Row(
-                                              children: [
-                                                Text(
-                                                  listName,
-                                                  style: Theme.of(listContext)
-                                                      .textTheme
-                                                      .titleMedium
-                                                      ?.copyWith(
-                                                          fontWeight:
-                                                              FontWeight.bold),
-                                                ),
-                                                const SizedBox(width: 8),
-                                                Text(
-                                                  '($bookCount)',
-                                                  style: Theme.of(context)
-                                                      .textTheme
-                                                      .bodySmall
-                                                      ?.copyWith(
-                                                          fontWeight:
-                                                              FontWeight.bold),
-                                                ),
-                                                const Spacer(),
-                                                IconButton(
-                                                  icon: Icon(
-                                                    isExpanded
-                                                        ? Icons.expand_less
-                                                        : Icons.expand_more,
-                                                  ),
-                                                  onPressed: () {
-                                                    setState(() {
-                                                      _expandedLists[listName] =
-                                                          !isExpanded;
-                                                    });
-                                                  },
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          const Divider(height: 1),
-                                          ListTile(
-                                            title: Text(
-                                              '${bookCount} book${bookCount == 1 ? '' : 's'}',
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .bodyMedium,
-                                            ),
-                                            trailing:
-                                                const Icon(Icons.chevron_right),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
+                              // Ensure animation controller exists for this list
+                              if (!_animationControllers
+                                  .containsKey(listName)) {
+                                _animationControllers[listName] =
+                                    AnimationController(
+                                  vsync: this,
+                                  duration: const Duration(milliseconds: 300),
                                 );
+                                _listAnimations[listName] = CurvedAnimation(
+                                  parent: _animationControllers[listName]!,
+                                  curve: Curves.easeInOut,
+                                );
+                                if (isExpanded) {
+                                  _animationControllers[listName]!.value = 1.0;
+                                }
                               }
+
+                              final animation = _listAnimations[listName]!;
+
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   if (index > 0) const SizedBox(height: 1.0),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16.0, vertical: 8.0),
-                                    child: Row(
+                                  Card(
+                                    elevation: 2,
+                                    color: widget.accentColor.withOpacity(0.1),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          listName,
-                                          style: Theme.of(listContext)
-                                              .textTheme
-                                              .titleMedium
-                                              ?.copyWith(
-                                                  fontWeight: FontWeight.bold),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          '($bookCount)',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                                  fontWeight: FontWeight.bold),
-                                        ),
-                                        const Spacer(),
-                                        IconButton(
-                                          icon: Icon(
-                                            isExpanded
-                                                ? Icons.expand_less
-                                                : Icons.expand_more,
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 16.0, vertical: 8.0),
+                                          child: Row(
+                                            children: [
+                                              Text(
+                                                listName,
+                                                style: Theme.of(listContext)
+                                                    .textTheme
+                                                    .titleMedium
+                                                    ?.copyWith(
+                                                        fontWeight:
+                                                            FontWeight.bold),
+                                              ),
+                                              const Spacer(),
+                                              IconButton(
+                                                icon: Icon(
+                                                  isExpanded
+                                                      ? Icons.expand_less
+                                                      : Icons.expand_more,
+                                                ),
+                                                onPressed: () {
+                                                  _toggleListExpanded(listName);
+                                                },
+                                              ),
+                                            ],
                                           ),
-                                          onPressed: () {
-                                            setState(() {
-                                              _expandedLists[listName] =
-                                                  !isExpanded;
-                                            });
-                                          },
+                                        ),
+                                        const Divider(height: 1),
+                                        ListTile(
+                                          title: Text(
+                                            '${bookCount} book${bookCount == 1 ? '' : 's'}',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodyMedium,
+                                          ),
+                                        ),
+                                        SizeTransition(
+                                          sizeFactor: animation,
+                                          child: Column(
+                                            children: groupedBooks[listName]
+                                                    ?.map((bookWithList) {
+                                                  final book =
+                                                      bookWithList.book;
+                                                  final isFirstBook =
+                                                      bookWithList ==
+                                                          groupedBooks[listName]
+                                                              ?.first;
+                                                  final isLastBook =
+                                                      bookWithList ==
+                                                          groupedBooks[listName]
+                                                              ?.last;
+
+                                                  return ListTile(
+                                                    contentPadding:
+                                                        const EdgeInsets
+                                                            .symmetric(
+                                                            horizontal: 16.0),
+                                                    leading: book.imageUrl !=
+                                                            null
+                                                        ? Image.network(
+                                                            book.imageUrl!,
+                                                            width: 50,
+                                                            height: 75,
+                                                            fit: BoxFit.cover,
+                                                            errorBuilder: (BuildContext
+                                                                        imageContext,
+                                                                    Object
+                                                                        error,
+                                                                    StackTrace?
+                                                                        stackTrace) =>
+                                                                const Icon(
+                                                                    Icons.book,
+                                                                    size: 50),
+                                                          )
+                                                        : const Icon(Icons.book,
+                                                            size: 50),
+                                                    title: Text(book.title),
+                                                    subtitle: Text(
+                                                      book.authors
+                                                              ?.join(', ') ??
+                                                          'Unknown Author',
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                    ),
+                                                    onTap: () => _onBookTap(
+                                                        context, book),
+                                                  );
+                                                }).toList() ??
+                                                [],
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -1167,60 +1189,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ],
                               );
                             } else if (item is BookWithList) {
-                              final book = item.book;
-                              final isFirstBook = index > 0 &&
-                                  displayItems[index - 1] is String;
-                              final isLastBook =
-                                  index < displayItems.length - 1 &&
-                                      displayItems[index + 1] is String;
-                              final isLastInList = isLastBook ||
-                                  (index < displayItems.length - 1 &&
-                                      displayItems[index + 1] is String);
-
-                              return Card(
-                                elevation: 2,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.only(
-                                    topLeft:
-                                        Radius.circular(isFirstBook ? 12 : 0),
-                                    topRight:
-                                        Radius.circular(isFirstBook ? 12 : 0),
-                                    bottomLeft:
-                                        Radius.circular(isLastInList ? 12 : 0),
-                                    bottomRight:
-                                        Radius.circular(isLastInList ? 12 : 0),
-                                  ),
-                                ),
-                                margin: EdgeInsets.only(
-                                  left: 16.0,
-                                  right: 16.0,
-                                  top: isFirstBook ? 8.0 : 0,
-                                  bottom: isLastInList ? 8.0 : 0,
-                                ),
-                                child: ListTile(
-                                  leading: book.imageUrl != null
-                                      ? Image.network(
-                                          book.imageUrl!,
-                                          width: 50,
-                                          height: 75,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (BuildContext
-                                                      imageContext,
-                                                  Object error,
-                                                  StackTrace? stackTrace) =>
-                                              const Icon(Icons.book, size: 50),
-                                        )
-                                      : const Icon(Icons.book, size: 50),
-                                  title: Text(book.title),
-                                  subtitle: Text(
-                                    book.authors?.join(', ') ??
-                                        'Unknown Author',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  onTap: () => _onBookTap(context, book),
-                                ),
-                              );
+                              // Skip book items as they're now shown in the SizeTransition
+                              return const SizedBox.shrink();
                             }
                             return const SizedBox.shrink();
                           },
@@ -1544,5 +1514,58 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     ];
+  }
+
+  Future<void> _loadExpandedStates() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final expandedStates = prefs.getString('expandedLists');
+      if (expandedStates != null) {
+        final Map<String, dynamic> states = json.decode(expandedStates);
+        setState(() {
+          states.forEach((key, value) {
+            _expandedLists[key] = value as bool;
+          });
+        });
+      }
+    } catch (e) {
+      print('Error loading expanded states: $e');
+    }
+  }
+
+  Future<void> _saveExpandedStates() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('expandedLists', json.encode(_expandedLists));
+    } catch (e) {
+      print('Error saving expanded states: $e');
+    }
+  }
+
+  void _toggleListExpanded(String listName) {
+    setState(() {
+      final isExpanded = _expandedLists[listName] ?? true;
+      _expandedLists[listName] = !isExpanded;
+
+      // Create or update animation controller for this list
+      if (!_animationControllers.containsKey(listName)) {
+        _animationControllers[listName] = AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 300),
+        );
+        _listAnimations[listName] = CurvedAnimation(
+          parent: _animationControllers[listName]!,
+          curve: Curves.easeInOut,
+        );
+      }
+
+      if (isExpanded) {
+        _animationControllers[listName]!.reverse();
+      } else {
+        _animationControllers[listName]!.forward();
+      }
+
+      _saveExpandedStates();
+    });
   }
 }
