@@ -479,6 +479,7 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() {
             _selectedListId = listRef.id;
             _selectedListName = 'Home';
+            _isLoading = false;
           });
         }
       } else {
@@ -487,6 +488,7 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() {
             _selectedListId = snapshot.docs.first.id;
             _selectedListName = 'Home';
+            _isLoading = false;
           });
         }
       }
@@ -528,16 +530,41 @@ class _HomeScreenState extends State<HomeScreen> {
     if (result != null && result.isNotEmpty) {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        final listRef = FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .collection('lists')
-            .doc();
+        try {
+          final listRef = FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .collection('lists')
+              .doc();
 
-        await listRef.set({
-          'name': result,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+          await listRef.set({
+            'name': result,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+
+          // Update the list names cache
+          _listNamesCache[listRef.id] = result;
+          _listNamesLastUpdated = DateTime.now();
+
+          // Refresh the UI
+          if (mounted) {
+            setState(() {
+              _selectedListId = listRef.id;
+              _selectedListName = result;
+            });
+            await _loadBooks();
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Created new list: $result')),
+          );
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error creating list: $e')),
+            );
+          }
+        }
       }
     }
   }
@@ -547,7 +574,8 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
         title: const Text('Delete List'),
-        content: const Text('Are you sure you want to delete this list?'),
+        content: const Text(
+            'Are you sure you want to delete this list and all its books?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -564,12 +592,69 @@ class _HomeScreenState extends State<HomeScreen> {
     if (confirmed == true) {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .collection('lists')
-            .doc(listId)
-            .delete();
+        try {
+          // First, get all books in the list
+          final booksSnapshot = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .collection('lists')
+              .doc(listId)
+              .collection('books')
+              .get();
+
+          // Create a batch operation
+          final batch = FirebaseFirestore.instance.batch();
+
+          // Add all books to the batch for deletion
+          for (var doc in booksSnapshot.docs) {
+            batch.delete(doc.reference);
+          }
+
+          // Add the list document to the batch for deletion
+          final listRef = FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .collection('lists')
+              .doc(listId);
+          batch.delete(listRef);
+
+          // Commit the batch operation
+          await batch.commit();
+
+          // Clear all caches
+          _clearListNamesCache();
+          _bookCache.clear();
+          _bookCacheTimestamps.clear();
+
+          // Update the UI
+          if (mounted) {
+            // Remove books from the deleted list
+            _loadedBooks.removeWhere((book) => book.listId == listId);
+
+            // If we're currently viewing the deleted list, switch to Home
+            if (_selectedListId == listId) {
+              _selectedListId = null;
+              _selectedListName = 'Home';
+            }
+          }
+
+          // Reload the current view
+          if (_selectedListId == null) {
+            await _initializeDefaultList();
+          }
+          await _loadBooks();
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('List and all its books deleted successfully')),
+          );
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error deleting list: $e')),
+            );
+          }
+        }
       }
     }
   }
@@ -578,82 +663,127 @@ class _HomeScreenState extends State<HomeScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final listsSnapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('lists')
-        .get();
+    try {
+      final listsSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('lists')
+          .get();
 
-    final lists = listsSnapshot.docs.map((doc) {
-      final data = doc.data();
-      return {
-        'id': doc.id,
-        'name': data['name'] as String? ?? 'Unknown List',
-      };
-    }).toList();
+      final lists = listsSnapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'name': data['name'] as String? ?? 'Unknown List',
+        };
+      }).toList();
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    final selectedList = await showDialog<Map<String, String>>(
-      context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('Add to List'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: lists.length,
-            itemBuilder: (context, index) {
-              final list = lists[index];
-              return ListTile(
-                title: Text(list['name']!),
-                onTap: () => Navigator.pop(dialogContext, list),
-              );
-            },
+      final selectedList = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: const Text('Add to List'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: lists.length,
+              itemBuilder: (context, index) {
+                final list = lists[index];
+                return ListTile(
+                  title: Text(list['name']!),
+                  onTap: () => Navigator.pop(dialogContext, list),
+                );
+              },
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
-    );
+      );
 
-    if (selectedList != null) {
-      try {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .collection('lists')
-            .doc(selectedList['id'])
-            .collection('books')
-            .doc(book.isbn)
-            .set({
-          'title': book.title,
-          'authors': book.authors,
-          'description': book.description,
-          'imageUrl': book.imageUrl,
-          'isbn': book.isbn,
-          'publishedDate': book.publishedDate,
-          'publisher': book.publisher,
-          'pageCount': book.pageCount,
-          'categories': book.categories,
-          'tags': book.tags,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+      if (selectedList != null) {
+        try {
+          // Add the book to Firestore
+          final bookRef = FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .collection('lists')
+              .doc(selectedList['id'])
+              .collection('books')
+              .doc(); // Let Firestore generate a unique ID
 
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Added to ${selectedList['name']}')),
-        );
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error adding book: $e')),
-        );
+          await bookRef.set({
+            'title': book.title,
+            'authors': book.authors,
+            'description': book.description,
+            'imageUrl': book.imageUrl,
+            'isbn': book.isbn,
+            'publishedDate': book.publishedDate,
+            'publisher': book.publisher,
+            'pageCount': book.pageCount,
+            'categories': book.categories,
+            'tags': book.tags,
+            'userId': user.uid,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+
+          // Update the list names cache
+          _listNamesCache[selectedList['id']!] = selectedList['name']!;
+          _listNamesLastUpdated = DateTime.now();
+
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Added to ${selectedList['name']}')),
+          );
+
+          // Update the UI
+          if (mounted) {
+            // If we're in Home view or the list we just added to, update the UI
+            if (_selectedListName == 'Home' ||
+                _selectedListId == selectedList['id']) {
+              // Create a new BookWithList object for the added book
+              final newBookWithList = BookWithList(
+                book: book,
+                listId: selectedList['id']!,
+                listName: selectedList['name']!,
+              );
+
+              // Update the state
+              setState(() {
+                // Clear the current books list
+                _loadedBooks.clear();
+
+                // Add the new book
+                _loadedBooks.add(newBookWithList);
+
+                // If we're in Home view, we need to reload all books
+                if (_selectedListName == 'Home') {
+                  _loadBooks();
+                } else {
+                  // For a specific list, just sort the current books
+                  _sortBooks();
+                }
+              });
+            }
+          }
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error adding book: $e')),
+          );
+        }
       }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading lists: $e')),
+      );
     }
   }
 
@@ -821,58 +951,86 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
                     )
-                  : FutureBuilder<Map<String, String>>(
-                      future: _fetchListNames(user!.uid),
-                      builder: (BuildContext builderContext,
-                          AsyncSnapshot<Map<String, String>>
-                              listNamesSnapshot) {
-                        if (listNamesSnapshot.connectionState ==
+                  : StreamBuilder<QuerySnapshot>(
+                      stream: _selectedListName == 'Home'
+                          ? FirebaseFirestore.instance
+                              .collectionGroup('books')
+                              .where('userId', isEqualTo: user!.uid)
+                              .snapshots()
+                          : FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(user!.uid)
+                              .collection('lists')
+                              .doc(_selectedListId)
+                              .collection('books')
+                              .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasError) {
+                          return Center(
+                            child: Text('Error: ${snapshot.error}'),
+                          );
+                        }
+
+                        if (snapshot.connectionState ==
                             ConnectionState.waiting) {
-                          print('FutureBuilder: Waiting for list names');
                           return const Center(
                               child: CircularProgressIndicator());
                         }
-                        if (listNamesSnapshot.hasError) {
-                          print(
-                              'FutureBuilder error: ${listNamesSnapshot.error}');
-                          print('Stack trace: ${listNamesSnapshot.stackTrace}');
-                          return Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                    'Error loading lists: ${listNamesSnapshot.error}'),
-                                const SizedBox(height: 16),
-                                ElevatedButton(
-                                  onPressed: () {
-                                    if (mounted) {
-                                      print('Retrying list names fetch');
-                                      setState(() {});
-                                    }
-                                  },
-                                  child: const Text('Retry'),
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-                        final listNames = listNamesSnapshot.data ?? {};
-                        print(
-                            'FutureBuilder: List names loaded: ${listNames.length} lists');
 
-                        if (_loadedBooks.isEmpty) {
+                        final books = snapshot.data?.docs ?? [];
+                        if (books.isEmpty) {
                           return const Center(child: Text('No books found'));
                         }
 
                         final groupedBooks = <String, List<BookWithList>>{};
-                        for (var bookWithList in _loadedBooks) {
+                        for (var doc in books) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          final book = Book(
+                            title: data['title']?.toString() ?? 'Unknown Title',
+                            authors: (data['authors'] as List<dynamic>?)
+                                    ?.cast<String>() ??
+                                [],
+                            description: data['description']?.toString() ?? '',
+                            imageUrl: data['imageUrl']?.toString(),
+                            isbn: data['isbn']?.toString() ?? '',
+                            publishedDate: data['publishedDate']?.toString(),
+                            publisher: data['publisher']?.toString(),
+                            pageCount: data['pageCount'] as int?,
+                            categories: (data['categories'] as List<dynamic>?)
+                                    ?.cast<String>() ??
+                                [],
+                            tags: (data['tags'] as List<dynamic>?)
+                                    ?.cast<String>() ??
+                                [],
+                          );
+
+                          String listName = 'Unknown List';
+                          String listId = '';
+
+                          if (_selectedListName == 'Home') {
+                            final path = doc.reference.path;
+                            final parts = path.split('/');
+                            if (parts.length >= 4) {
+                              listId = parts[3];
+                              listName =
+                                  _listNamesCache[listId] ?? 'Unknown List';
+                            }
+                          } else {
+                            listId = _selectedListId!;
+                            listName = _selectedListName;
+                          }
+
                           groupedBooks
-                              .putIfAbsent(bookWithList.listName, () => [])
-                              .add(bookWithList);
+                              .putIfAbsent(listName, () => [])
+                              .add(BookWithList(
+                                book: book,
+                                listId: listId,
+                                listName: listName,
+                              ));
                         }
+
                         final sortedListNames = groupedBooks.keys.toList()
                           ..sort();
-
                         final displayItems = <dynamic>[];
                         for (var listName in sortedListNames) {
                           displayItems.add(listName);
@@ -1038,7 +1196,9 @@ class _HomeScreenState extends State<HomeScreen> {
       print('List names query completed: ${snapshot.docs.length} lists found');
       _listNamesCache.clear();
       for (var doc in snapshot.docs) {
-        _listNamesCache[doc.id] = doc['name'] as String;
+        final listName = doc['name'] as String;
+        _listNamesCache[doc.id] = listName;
+        print('Found list: $listName (ID: ${doc.id})');
       }
       _listNamesLastUpdated = DateTime.now();
       return _listNamesCache;
@@ -1087,106 +1247,113 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _sortBooks() {
+    _loadedBooks.sort((a, b) => a.book.title.compareTo(b.book.title));
+  }
+
   Future<void> _loadBooks() async {
-    if (!mounted) return;
-    print('Starting to load books');
-
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      print('Cannot load books: No authenticated user');
-      return;
-    }
+    if (user == null) return;
 
-    if (_selectedListId == null) {
-      print('Cannot load books: No selected list ID');
-      return;
-    }
-
+    print('Starting to load books');
     print('Loading books for user: ${user.uid}, list: $_selectedListId');
 
     try {
-      Query query = _selectedListName == 'Home'
-          ? FirebaseFirestore.instance
-              .collectionGroup('books')
-              .where('userId', isEqualTo: user.uid)
-              .orderBy('createdAt', descending: true)
-          : FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .collection('lists')
-              .doc(_selectedListId)
-              .collection('books')
-              .orderBy('createdAt', descending: true);
-
-      print('Executing Firestore query');
-      final snapshot = await query.get();
-      print('Query completed: ${snapshot.docs.length} documents found');
-
-      if (snapshot.docs.isEmpty) {
-        print('No books found in Firestore');
-        if (mounted) {
-          setState(() {
-            _loadedBooks = [];
-            _isLoading = false;
-          });
-        }
-        return;
+      // First, ensure we have the list names cache populated
+      if (_selectedListName == 'Home') {
+        await _fetchListNames(user.uid);
       }
 
-      final listNames = await _fetchListNames(user.uid);
-      print('List names loaded: ${listNames.length} lists');
+      Query query;
+      if (_selectedListName == 'Home') {
+        print('Executing Firestore query for Home');
+        // For Home view, get all books from all lists
+        query = FirebaseFirestore.instance
+            .collectionGroup('books')
+            .where('userId', isEqualTo: user.uid);
+      } else {
+        print('Executing Firestore query for list $_selectedListId');
+        // For specific list, get only books from that list
+        query = FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('lists')
+            .doc(_selectedListId)
+            .collection('books');
+      }
 
-      final books = snapshot.docs.map((doc) {
+      final querySnapshot = await query.get();
+      print('Query completed: ${querySnapshot.docs.length} documents found');
+
+      // Clear the current books list
+      _loadedBooks.clear();
+
+      // Process each book
+      for (var doc in querySnapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
-        print('Processing book: ${data['title']}');
-
         final book = Book(
-          title: data['title'] as String? ?? 'Unknown Title',
-          authors: (data['authors'] as List<dynamic>?)?.cast<String>(),
-          description: data['description'] as String? ?? '',
-          imageUrl: data['imageUrl'] as String?,
-          isbn: data['isbn'] as String? ?? '',
-          publishedDate: data['publishedDate'] as String?,
-          publisher: data['publisher'] as String?,
+          title: data['title']?.toString() ?? 'Unknown Title',
+          authors: (data['authors'] as List<dynamic>?)?.cast<String>() ?? [],
+          description: data['description']?.toString() ?? '',
+          imageUrl: data['imageUrl']?.toString(),
+          isbn: data['isbn']?.toString() ?? '',
+          publishedDate: data['publishedDate']?.toString(),
+          publisher: data['publisher']?.toString(),
           pageCount: data['pageCount'] as int?,
-          categories: (data['categories'] as List<dynamic>?)?.cast<String>(),
-          tags: (data['tags'] as List<dynamic>?)?.cast<String>(),
+          categories:
+              (data['categories'] as List<dynamic>?)?.cast<String>() ?? [],
+          tags: (data['tags'] as List<dynamic>?)?.cast<String>() ?? [],
         );
 
-        String listId;
-        String listName;
+        // Get the list name for this book
+        String listName = 'Unknown List';
+        String listId = '';
+
         if (_selectedListName == 'Home') {
-          final pathParts = doc.reference.path.split('/');
-          listId = pathParts[pathParts.length - 3];
-          listName = listNames[listId] ?? 'Unknown List';
+          // For Home view, get the list name from the path
+          final path = doc.reference.path;
+          final parts = path.split('/');
+          if (parts.length >= 4) {
+            listId = parts[3];
+            listName = _listNamesCache[listId] ?? 'Unknown List';
+          }
         } else {
+          // For specific list, use the current list name
           listId = _selectedListId!;
           listName = _selectedListName;
         }
 
-        return BookWithList(
+        print('Processing book: ${book.title}');
+        print('Book ${book.title} belongs to list: $listName (ID: $listId)');
+
+        _loadedBooks.add(BookWithList(
           book: book,
           listId: listId,
           listName: listName,
-        );
-      }).toList();
+        ));
+      }
 
-      print('Successfully processed ${books.length} books');
+      // Sort books based on current sort order
+      _sortBooks();
+
+      print('Successfully processed ${_loadedBooks.length} books');
+
+      // Force a UI update
       if (mounted) {
         setState(() {
-          _loadedBooks = books;
           _isLoading = false;
         });
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       print('Error loading books: $e');
-      print('Stack trace: $stackTrace');
       if (mounted) {
         setState(() {
-          _isOffline = true;
           _isLoading = false;
           _errorMessage = 'Error loading books: $e';
         });
+        ScaffoldMessenger.of(context as BuildContext).showSnackBar(
+          SnackBar(content: Text('Error loading books: $e')),
+        );
       }
     }
   }
@@ -1240,12 +1407,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 final listName = data['name'] as String? ?? 'Unknown List';
                 return PopupMenuItem<String>(
                   value: listId,
-                  onTap: () {
+                  onTap: () async {
                     if (mounted) {
                       setState(() {
                         _selectedListId = listId;
                         _selectedListName = listName;
                       });
+                      // Trigger a reload of books for the new list
+                      await _loadBooks();
                     }
                   },
                   child: ListTile(
