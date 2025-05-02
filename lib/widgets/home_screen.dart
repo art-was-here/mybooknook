@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -20,8 +21,13 @@ class BookWithList {
 
 class HomeScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
+  final Color accentColor;
 
-  const HomeScreen({super.key, required this.onThemeChanged});
+  const HomeScreen({
+    super.key,
+    required this.onThemeChanged,
+    required this.accentColor,
+  });
 
   @override
   _HomeScreenState createState() => _HomeScreenState();
@@ -34,6 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _errorMessage;
   bool _isLoading = true;
   late BookService _bookService;
+  StreamSubscription<User?>? _authSubscription;
 
   @override
   void initState() {
@@ -41,20 +48,32 @@ class _HomeScreenState extends State<HomeScreen> {
     _bookService = BookService(context);
     FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: false);
     print('HomeScreen initState: Waiting for auth state');
-    FirebaseAuth.instance.authStateChanges().firstWhere((user) => user != null).then((user) {
-      print('HomeScreen initState: User authenticated: ${user?.uid}, email: ${user?.email}');
-      _initializeDefaultList();
-    }).catchError((e, stackTrace) {
-      print('HomeScreen initState: Error waiting for auth state: $e');
-      print('Stack trace: $stackTrace');
-      setState(() {
-        _errorMessage = 'Authentication error: $e. Please sign in again.';
-        _isLoading = false;
-      });
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null && mounted) {
+        print('HomeScreen initState: User authenticated: ${user.uid}, email: ${user.email}');
+        _initializeDefaultList();
+      }
+    }, onError: (e, stackTrace) {
+      if (mounted) {
+        print('HomeScreen initState: Error waiting for auth state: $e');
+        print('Stack trace: $stackTrace');
+        setState(() {
+          _errorMessage = 'Authentication error: $e. Please sign in again.';
+          _isLoading = false;
+        });
+      }
     });
   }
 
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    print('HomeScreen dispose: Canceled auth subscription');
+    super.dispose();
+  }
+
   Future<void> _initializeDefaultList() async {
+    if (!mounted) return;
     print('Initializing default list');
     setState(() {
       _isLoading = true;
@@ -62,11 +81,13 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      print('No authenticated user found');
-      setState(() {
-        _errorMessage = 'No authenticated user. Please sign in again.';
-        _isLoading = false;
-      });
+      if (mounted) {
+        print('No authenticated user found');
+        setState(() {
+          _errorMessage = 'No authenticated user. Please sign in again.';
+          _isLoading = false;
+        });
+      }
       return;
     }
     print('Authenticated user: UID=${user.uid}, email=${user.email}');
@@ -118,24 +139,36 @@ class _HomeScreenState extends State<HomeScreen> {
             'createdAt': FieldValue.serverTimestamp(),
           });
           print('Created default list with ID: ${listRef.id}');
-          setState(() {
-            _selectedListId = listRef.id;
-            _selectedListName = 'Home';
-          });
+          if (mounted) {
+            setState(() {
+              _selectedListId = listRef.id;
+              _selectedListName = 'Home';
+            });
+          }
         } else {
           print('Found existing default list with ID: ${snapshot.docs.first.id}');
-          setState(() {
-            _selectedListId = snapshot.docs.first.id;
-            _selectedListName = 'Home';
-          });
+          if (mounted) {
+            setState(() {
+              _selectedListId = snapshot.docs.first.id;
+              _selectedListName = 'Home';
+            });
+          }
         }
       } catch (e, stackTrace) {
         print('Error querying or creating Home list: $e');
         print('Stack trace: $stackTrace');
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'Failed to load lists: $e';
+            if (e.toString().contains('permission-denied')) {
+              _errorMessage = 'Permission denied accessing lists (Error Code: INIT). Please sign out and sign in again, or contact support if the issue persists.';
+            }
+          });
+        }
         throw Exception('Failed to query or create Home list: $e');
       }
 
-      if (_selectedListId == null) {
+      if (_selectedListId == null && mounted) {
         print('Error: _selectedListId is still null after initialization');
         throw Exception('Failed to initialize default list ID');
       }
@@ -143,21 +176,26 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e, stackTrace) {
       print('Error initializing default list: $e');
       print('Stack trace: $stackTrace');
-      setState(() {
-        _errorMessage = 'Failed to load lists: $e';
-        if (e.toString().contains('permission-denied')) {
-          _errorMessage = 'Permission denied accessing lists (Error Code: INIT). Please sign out and sign in again, or contact support if the issue persists.';
-        }
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to load lists: $e';
+          if (e.toString().contains('permission-denied')) {
+            _errorMessage = 'Permission denied accessing lists (Error Code: INIT). Please sign out and sign in again, or contact support if the issue persists.';
+          }
+        });
+      }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
       print('Initialization finished, _isLoading=false');
     }
   }
 
   Future<void> _addNewList() async {
+    if (!mounted) return;
     print('Opening new list dialog');
     final TextEditingController controller = TextEditingController();
     final String? newListName = await showDialog<String>(
@@ -195,7 +233,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    if (newListName != null) {
+    if (newListName != null && mounted) {
       print('New list name received: $newListName');
       final user = FirebaseAuth.instance.currentUser!;
       try {
@@ -209,24 +247,29 @@ class _HomeScreenState extends State<HomeScreen> {
           'createdAt': FieldValue.serverTimestamp(),
         });
         print('New list created with ID: ${listRef.id}');
-        setState(() {
-          _selectedListId = listRef.id;
-          _selectedListName = newListName;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('List "$newListName" created')),
-        );
+        if (mounted) {
+          setState(() {
+            _selectedListId = listRef.id;
+            _selectedListName = newListName;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('List "$newListName" created')),
+          );
+        }
       } catch (e, stackTrace) {
         print('Error creating new list: $e');
         print('Stack trace: $stackTrace');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error creating list: $e')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error creating list: $e')),
+          );
+        }
       }
     }
   }
 
   Future<void> _deleteList(String listId, String listName) async {
+    if (!mounted) return;
     print('Attempting to delete list: $listName (ID: $listId)');
     if (listName == 'Home') {
       print('Cannot delete default list');
@@ -260,7 +303,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    if (confirmDelete == true) {
+    if (confirmDelete == true && mounted) {
       print('Deleting list: $listName');
       final user = FirebaseAuth.instance.currentUser!;
       try {
@@ -272,24 +315,29 @@ class _HomeScreenState extends State<HomeScreen> {
             .doc(listId)
             .delete();
         print('List deleted: $listName');
-        if (_selectedListId == listId) {
+        if (_selectedListId == listId && mounted) {
           print('Selected list deleted, reinitializing default list');
           await _initializeDefaultList();
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('List "$listName" deleted')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('List "$listName" deleted')),
+          );
+        }
       } catch (e, stackTrace) {
         print('Error deleting list: $e');
         print('Stack trace: $stackTrace');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error deleting list: $e')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting list: $e')),
+          );
+        }
       }
     }
   }
 
   Future<void> scanBarcode() async {
+    if (!mounted) return;
     if (_selectedListId == null) {
       print('No list selected for barcode scan');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -303,9 +351,11 @@ class _HomeScreenState extends State<HomeScreen> {
       var status = await Permission.camera.request();
       if (!status.isGranted) {
         print('Camera permission denied');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Camera permission denied')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Camera permission denied')),
+          );
+        }
         return;
       }
 
@@ -313,7 +363,7 @@ class _HomeScreenState extends State<HomeScreen> {
       String isbn = result.rawContent;
       print('Scanned ISBN: $isbn');
 
-      if (isbn.isNotEmpty) {
+      if (isbn.isNotEmpty && mounted) {
         Book? book = await _bookService.fetchBookDetails(isbn);
         if (book != null) {
           print('Book found: ${book.title}');
@@ -326,27 +376,35 @@ class _HomeScreenState extends State<HomeScreen> {
               .doc(isbn)
               .set(book.toMap());
           print('Book added via barcode: ${book.title}');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Book added to $_selectedListName: ${book.title}')),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Book added to $_selectedListName: ${book.title}')),
+            );
+          }
         } else {
           print('Book not found for ISBN: $isbn');
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Book not found')),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Book not found')),
+            );
+          }
         }
       } else {
         print('No ISBN scanned');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No ISBN detected')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No ISBN detected')),
+          );
+        }
       }
     } catch (e, stackTrace) {
       print('Error during barcode scan: $e');
       print('Stack trace: $stackTrace');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error scanning barcode: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error scanning barcode: $e')),
+        );
+      }
     }
   }
 
@@ -355,12 +413,14 @@ class _HomeScreenState extends State<HomeScreen> {
     return [
       PopupMenuItem<String>(
         child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('users')
-              .doc(FirebaseAuth.instance.currentUser!.uid)
-              .collection('lists')
-              .orderBy('createdAt')
-              .snapshots(),
+          stream: FirebaseAuth.instance.currentUser != null
+              ? FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(FirebaseAuth.instance.currentUser!.uid)
+                  .collection('lists')
+                  .orderBy('createdAt')
+                  .snapshots()
+              : Stream.empty(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               print('List menu: Waiting for data');
@@ -380,8 +440,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 trailing: IconButton(
                   icon: const Icon(Icons.refresh),
                   onPressed: () {
-                    print('Retrying list menu load');
-                    setState(() {}); // Trigger rebuild
+                    if (mounted) {
+                      print('Retrying list menu load');
+                      setState(() {});
+                    }
                   },
                 ),
               );
@@ -401,10 +463,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   value: listId,
                   onTap: () {
                     print('Selected list: $listName (ID: $listId)');
-                    setState(() {
-                      _selectedListId = listId;
-                      _selectedListName = listName;
-                    });
+                    if (mounted) {
+                      setState(() {
+                        _selectedListId = listId;
+                        _selectedListName = listName;
+                      });
+                    }
                   },
                   child: ListTile(
                     title: Text(listName),
@@ -435,7 +499,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: PopupMenuButton<String>(
           onSelected: (value) async {
-            if (value == 'add_list') {
+            if (value == 'add_list' && mounted) {
               print('Add new list selected');
               await _addNewList();
             }
@@ -476,7 +540,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           PopupMenuButton<String>(
             onSelected: (value) {
-              if (value == 'sign_out') {
+              if (value == 'sign_out' && mounted) {
                 print('Signing out user: ${user?.email ?? "No user"}');
                 FirebaseAuth.instance.signOut();
               }
@@ -500,16 +564,22 @@ class _HomeScreenState extends State<HomeScreen> {
                       Text(_errorMessage!),
                       const SizedBox(height: 16),
                       ElevatedButton(
-                        onPressed: _initializeDefaultList,
+                        onPressed: () {
+                          if (mounted) {
+                            _initializeDefaultList();
+                          }
+                        },
                         child: const Text('Retry'),
                       ),
                       const SizedBox(height: 8),
                       TextButton(
                         onPressed: () async {
-                          print('Signing out due to error');
-                          await FirebaseAuth.instance.signOut();
-                          await FirebaseAuth.instance.setPersistence(Persistence.NONE);
-                          print('Signed out and cleared persistence');
+                          if (mounted) {
+                            print('Signing out due to error');
+                            await FirebaseAuth.instance.signOut();
+                            await FirebaseAuth.instance.setPersistence(Persistence.NONE);
+                            print('Signed out and cleared persistence');
+                          }
                         },
                         child: const Text('Sign Out'),
                       ),
@@ -524,16 +594,22 @@ class _HomeScreenState extends State<HomeScreen> {
                           const Text('Failed to load list. Please try again.'),
                           const SizedBox(height: 16),
                           ElevatedButton(
-                            onPressed: _initializeDefaultList,
+                            onPressed: () {
+                              if (mounted) {
+                                _initializeDefaultList();
+                              }
+                            },
                             child: const Text('Retry'),
                           ),
                           const SizedBox(height: 8),
                           TextButton(
                             onPressed: () async {
-                              print('Signing out due to null list ID');
-                              await FirebaseAuth.instance.signOut();
-                              await FirebaseAuth.instance.setPersistence(Persistence.NONE);
-                              print('Signed out and cleared persistence');
+                              if (mounted) {
+                                print('Signing out due to null list ID');
+                                await FirebaseAuth.instance.signOut();
+                                await FirebaseAuth.instance.setPersistence(Persistence.NONE);
+                                print('Signed out and cleared persistence');
+                              }
                             },
                             child: const Text('Sign Out'),
                           ),
@@ -558,8 +634,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(height: 16),
                                 ElevatedButton(
                                   onPressed: () {
-                                    print('Retrying list names fetch');
-                                    setState(() {});
+                                    if (mounted) {
+                                      print('Retrying list names fetch');
+                                      setState(() {});
+                                    }
                                   },
                                   child: const Text('Retry'),
                                 ),
@@ -571,19 +649,21 @@ class _HomeScreenState extends State<HomeScreen> {
                         print('FutureBuilder: List names loaded: ${listNames.length} lists');
 
                         return StreamBuilder<QuerySnapshot>(
-                          stream: _selectedListName == 'Home'
+                          stream: _selectedListName == 'Home' && user != null
                               ? (FirebaseFirestore.instance.collectionGroup('books').snapshots()
                                   as Stream<QuerySnapshot>)
-                              : FirebaseFirestore.instance
-                                  .collection('users')
-                                  .doc(user!.uid)
-                                  .collection('lists')
-                                  .doc(_selectedListId)
-                                  .collection('books')
-                                  .snapshots(),
+                              : user != null
+                                  ? FirebaseFirestore.instance
+                                      .collection('users')
+                                      .doc(user.uid)
+                                      .collection('lists')
+                                      .doc(_selectedListId)
+                                      .collection('books')
+                                      .snapshots()
+                                  : Stream.empty(),
                           builder: (context, snapshot) {
                             print('StreamBuilder: Connection state: ${snapshot.connectionState}');
-                            print('StreamBuilder: Query type: ${_selectedListName == 'Home' ? 'collectionGroup(books)' : 'users/${user!.uid}/lists/$_selectedListId/books'}');
+                            print('StreamBuilder: Query type: ${_selectedListName == 'Home' ? 'collectionGroup(books)' : 'users/${user?.uid ?? "no-user"}/lists/$_selectedListId/books'}');
                             if (snapshot.connectionState == ConnectionState.waiting) {
                               print('StreamBuilder: Waiting for data');
                               return const Center(child: CircularProgressIndicator());
@@ -604,23 +684,25 @@ class _HomeScreenState extends State<HomeScreen> {
                                     const SizedBox(height: 16),
                                     ElevatedButton(
                                       onPressed: () async {
-                                        print('Retrying StreamBuilder');
-                                        if (user != null) {
+                                        if (mounted && user != null) {
+                                          print('Retrying StreamBuilder');
                                           print('Refreshing auth token before retry');
                                           await user.getIdToken(true);
                                           print('Token refreshed for StreamBuilder retry');
+                                          setState(() {});
                                         }
-                                        setState(() {});
                                       },
                                       child: const Text('Retry'),
                                     ),
                                     const SizedBox(height: 8),
                                     TextButton(
                                       onPressed: () async {
-                                        print('Signing out due to StreamBuilder error');
-                                        await FirebaseAuth.instance.signOut();
-                                        await FirebaseAuth.instance.setPersistence(Persistence.NONE);
-                                        print('Signed out and cleared persistence');
+                                        if (mounted) {
+                                          print('Signing out due to StreamBuilder error');
+                                          await FirebaseAuth.instance.signOut();
+                                          await FirebaseAuth.instance.setPersistence(Persistence.NONE);
+                                          print('Signed out and cleared persistence');
+                                        }
                                       },
                                       child: const Text('Sign Out'),
                                     ),
@@ -741,19 +823,19 @@ class _HomeScreenState extends State<HomeScreen> {
         openButtonBuilder: RotateFloatingActionButtonBuilder(
           child: const Icon(Icons.add),
           foregroundColor: Colors.white,
-          backgroundColor: const Color(0xFFE8F5E9), // Pale green
+          backgroundColor: widget.accentColor,
           shape: const CircleBorder(),
         ),
         closeButtonBuilder: DefaultFloatingActionButtonBuilder(
           child: const Icon(Icons.close),
           foregroundColor: Colors.white,
-          backgroundColor: const Color(0xFFE8F5E9), // Pale green
+          backgroundColor: widget.accentColor,
           shape: const CircleBorder(),
         ),
         children: [
           FloatingActionButton.small(
             heroTag: 'search_fab',
-            backgroundColor: const Color(0xFFC8E6C9), // Darker green
+            backgroundColor: widget.accentColor.withOpacity(0.8),
             foregroundColor: Colors.white,
             onPressed: () {
               print('Search FAB pressed');
@@ -769,7 +851,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           FloatingActionButton.small(
             heroTag: 'scan_fab',
-            backgroundColor: const Color(0xFFC8E6C9), // Darker green
+            backgroundColor: widget.accentColor.withOpacity(0.8),
             foregroundColor: Colors.white,
             onPressed: () {
               print('Scan FAB pressed');
@@ -790,6 +872,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Fetch list names to map listId to listName
   Future<Map<String, String>> _fetchListNames(String userId) async {
+    if (!mounted) return {};
     print('Fetching list names for user: $userId');
     try {
       final snapshot = await FirebaseFirestore.instance

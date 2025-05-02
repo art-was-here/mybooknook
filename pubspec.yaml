@@ -20,6 +20,8 @@ dependencies:
   flutter_expandable_fab: ^2.0.0
   cloud_firestore: ^4.14.0
   flutter_launcher_icons: ^0.13.1
+  flutter_colorpicker: ^1.1.0
+  shared_preferences: ^2.5.3
 
 flutter_launcher_icons:
   android: true
