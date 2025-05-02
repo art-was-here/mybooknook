@@ -628,6 +628,11 @@ class _HomeScreenState extends State<HomeScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
+          offset: const Offset(0, 40),
+          constraints: BoxConstraints(
+            minWidth: MediaQuery.of(context).size.width,
+            maxWidth: MediaQuery.of(context).size.width,
+          ),
         ),
         actions: [
           IconButton(
@@ -941,7 +946,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      if (index > 0) const Divider(),
+                                      if (index > 0)
+                                        const SizedBox(height: 1.0),
                                       Padding(
                                         padding: const EdgeInsets.symmetric(
                                             horizontal: 16.0, vertical: 8.0),
@@ -958,35 +964,62 @@ class _HomeScreenState extends State<HomeScreen> {
                                   );
                                 } else if (item is BookWithList) {
                                   final book = item.book;
-                                  return ListTile(
-                                    leading: book.imageUrl != null
-                                        ? Image.network(
-                                            book.imageUrl!,
-                                            width: 50,
-                                            height: 75,
-                                            fit: BoxFit.cover,
-                                            errorBuilder:
-                                                (context, error, stackTrace) =>
-                                                    const Icon(Icons.book,
-                                                        size: 50),
-                                          )
-                                        : const Icon(Icons.book, size: 50),
-                                    title: Text(book.title),
-                                    subtitle: Text(
-                                      book.description,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
+                                  final isFirstBook = index > 0 &&
+                                      displayItems[index - 1] is String;
+                                  final isLastBook =
+                                      index < displayItems.length - 1 &&
+                                          displayItems[index + 1] is String;
+
+                                  return Card(
+                                    elevation: 2,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.only(
+                                        topLeft: Radius.circular(
+                                            isFirstBook ? 12 : 0),
+                                        topRight: Radius.circular(
+                                            isFirstBook ? 12 : 0),
+                                        bottomLeft: Radius.circular(
+                                            isLastBook ? 12 : 0),
+                                        bottomRight: Radius.circular(
+                                            isLastBook ? 12 : 0),
+                                      ),
                                     ),
-                                    onTap: () {
-                                      print('Tapped book: ${book.title}');
-                                      BookDetailsCard.show(
-                                        context,
-                                        book,
-                                        item.listName,
-                                        _bookService,
-                                        item.listId,
-                                      );
-                                    },
+                                    margin: EdgeInsets.only(
+                                      left: 16.0,
+                                      right: 16.0,
+                                      top: isFirstBook ? 8.0 : 0,
+                                      bottom: isLastBook ? 8.0 : 0,
+                                    ),
+                                    child: ListTile(
+                                      leading: book.imageUrl != null
+                                          ? Image.network(
+                                              book.imageUrl!,
+                                              width: 50,
+                                              height: 75,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error,
+                                                      stackTrace) =>
+                                                  const Icon(Icons.book,
+                                                      size: 50),
+                                            )
+                                          : const Icon(Icons.book, size: 50),
+                                      title: Text(book.title),
+                                      subtitle: Text(
+                                        book.description,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      onTap: () {
+                                        print('Tapped book: ${book.title}');
+                                        BookDetailsCard.show(
+                                          context,
+                                          book,
+                                          item.listName,
+                                          _bookService,
+                                          item.listId,
+                                        );
+                                      },
+                                    ),
                                   );
                                 }
                                 return const SizedBox.shrink();
