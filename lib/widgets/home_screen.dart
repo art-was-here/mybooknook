@@ -55,6 +55,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final Map<String, Book> _bookCache = {};
   final Map<String, DateTime> _bookCacheTimestamps = {};
   static const Duration _cacheExpiry = Duration(hours: 1);
+  final Map<String, bool> _expandedLists = {};
 
   @override
   void initState() {
@@ -1034,7 +1035,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         final displayItems = <dynamic>[];
                         for (var listName in sortedListNames) {
                           displayItems.add(listName);
-                          displayItems.addAll(groupedBooks[listName]!);
+                          if (_expandedLists[listName] ?? true) {
+                            displayItems.addAll(groupedBooks[listName]!);
+                          }
                         }
 
                         return ListView.builder(
@@ -1042,6 +1045,82 @@ class _HomeScreenState extends State<HomeScreen> {
                           itemBuilder: (BuildContext listContext, int index) {
                             final item = displayItems[index];
                             if (item is String) {
+                              final listName = item;
+                              final bookCount =
+                                  groupedBooks[listName]?.length ?? 0;
+                              final isExpanded =
+                                  _expandedLists[listName] ?? true;
+
+                              if (!isExpanded) {
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (index > 0) const SizedBox(height: 1.0),
+                                    Card(
+                                      elevation: 2,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 16.0,
+                                                vertical: 8.0),
+                                            child: Row(
+                                              children: [
+                                                Text(
+                                                  listName,
+                                                  style: Theme.of(listContext)
+                                                      .textTheme
+                                                      .titleMedium
+                                                      ?.copyWith(
+                                                          fontWeight:
+                                                              FontWeight.bold),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  '($bookCount)',
+                                                  style: Theme.of(context)
+                                                      .textTheme
+                                                      .bodySmall
+                                                      ?.copyWith(
+                                                          fontWeight:
+                                                              FontWeight.bold),
+                                                ),
+                                                const Spacer(),
+                                                IconButton(
+                                                  icon: Icon(
+                                                    isExpanded
+                                                        ? Icons.expand_less
+                                                        : Icons.expand_more,
+                                                  ),
+                                                  onPressed: () {
+                                                    setState(() {
+                                                      _expandedLists[listName] =
+                                                          !isExpanded;
+                                                    });
+                                                  },
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const Divider(height: 1),
+                                          ListTile(
+                                            title: Text(
+                                              '${bookCount} book${bookCount == 1 ? '' : 's'}',
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodyMedium,
+                                            ),
+                                            trailing:
+                                                const Icon(Icons.chevron_right),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -1049,13 +1128,40 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 16.0, vertical: 8.0),
-                                    child: Text(
-                                      item,
-                                      style: Theme.of(listContext)
-                                          .textTheme
-                                          .titleMedium
-                                          ?.copyWith(
-                                              fontWeight: FontWeight.bold),
+                                    child: Row(
+                                      children: [
+                                        Text(
+                                          listName,
+                                          style: Theme.of(listContext)
+                                              .textTheme
+                                              .titleMedium
+                                              ?.copyWith(
+                                                  fontWeight: FontWeight.bold),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          '($bookCount)',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                  fontWeight: FontWeight.bold),
+                                        ),
+                                        const Spacer(),
+                                        IconButton(
+                                          icon: Icon(
+                                            isExpanded
+                                                ? Icons.expand_less
+                                                : Icons.expand_more,
+                                          ),
+                                          onPressed: () {
+                                            setState(() {
+                                              _expandedLists[listName] =
+                                                  !isExpanded;
+                                            });
+                                          },
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
@@ -1067,6 +1173,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               final isLastBook =
                                   index < displayItems.length - 1 &&
                                       displayItems[index + 1] is String;
+                              final isLastInList = isLastBook ||
+                                  (index < displayItems.length - 1 &&
+                                      displayItems[index + 1] is String);
 
                               return Card(
                                 elevation: 2,
@@ -1077,16 +1186,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                     topRight:
                                         Radius.circular(isFirstBook ? 12 : 0),
                                     bottomLeft:
-                                        Radius.circular(isLastBook ? 12 : 0),
+                                        Radius.circular(isLastInList ? 12 : 0),
                                     bottomRight:
-                                        Radius.circular(isLastBook ? 12 : 0),
+                                        Radius.circular(isLastInList ? 12 : 0),
                                   ),
                                 ),
                                 margin: EdgeInsets.only(
                                   left: 16.0,
                                   right: 16.0,
                                   top: isFirstBook ? 8.0 : 0,
-                                  bottom: isLastBook ? 8.0 : 0,
+                                  bottom: isLastInList ? 8.0 : 0,
                                 ),
                                 child: ListTile(
                                   leading: book.imageUrl != null
