@@ -362,7 +362,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 26.0),
+            padding: const EdgeInsets.fromLTRB(29.0, 16.0, 29.0, 31.0),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
