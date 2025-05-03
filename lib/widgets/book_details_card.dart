@@ -1,318 +1,288 @@
 import 'package:flutter/material.dart';
 import '../models/book.dart';
 import '../services/book_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-class BookDetailsCard {
-  static void show(BuildContext context, Book book, String selectedListName,
-      BookService bookService, String? selectedListId) {
-    print('Showing details for book: ${book.title}');
-    bool isInfoExpanded = false;
-    bool isDescriptionExpanded = false;
-    bool isDeleting = false;
-    int currentRating = book.userRating;
+class BookDetailsCard extends StatefulWidget {
+  final Book book;
+  final String listName;
+  final BookService bookService;
+  final String? listId;
 
+  const BookDetailsCard({
+    super.key,
+    required this.book,
+    required this.listName,
+    required this.bookService,
+    this.listId,
+  });
+
+  static void show(BuildContext context, Book book, String listName,
+      BookService bookService, String? listId) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      isDismissible: true,
-      enableDrag: true,
-      backgroundColor: Colors.transparent,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (modalContext) => DraggableScrollableSheet(
-        initialChildSize: 0.9,
-        minChildSize: 0.5,
-        maxChildSize: 0.9,
-        expand: false,
-        snap: true,
-        snapSizes: const [0.5, 0.9],
-        builder: (context, scrollController) {
-          // Create a listener to track scroll position
-          bool isAtTop = true;
-          scrollController.addListener(() {
-            isAtTop = scrollController.position.pixels <= 0;
-          });
+      builder: (BuildContext sheetContext) {
+        return BookDetailsCard(
+          book: book,
+          listName: listName,
+          bookService: bookService,
+          listId: listId,
+        );
+      },
+    );
+  }
 
-          return StatefulBuilder(
-            builder: (modalContext, setModalState) => Container(
-              decoration: BoxDecoration(
-                color: Theme.of(modalContext).scaffoldBackgroundColor,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(16)),
-              ),
-              child: NotificationListener<ScrollNotification>(
-                onNotification: (notification) {
-                  // Only allow dismissal when at the top
-                  if (notification is ScrollStartNotification) {
-                    if (!isAtTop) {
-                      // Prevent dismissal by returning true
-                      return true;
-                    }
-                  }
-                  return false;
-                },
-                child: SingleChildScrollView(
-                  controller: scrollController,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Center(
-                          child: Container(
-                            width: 40,
-                            height: 5,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[400],
-                              borderRadius: BorderRadius.circular(2.5),
+  @override
+  State<BookDetailsCard> createState() => _BookDetailsCardState();
+}
+
+class _BookDetailsCardState extends State<BookDetailsCard> {
+  bool _isDescriptionExpanded = false;
+  double _userRating = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _userRating = widget.book.userRating ?? 0;
+  }
+
+  Future<void> _updateReadingStatus(BuildContext context, bool isRead) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final bookRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('lists')
+          .doc(widget.listId)
+          .collection('books')
+          .doc(widget.book.isbn);
+
+      await bookRef.update({
+        'isRead': isRead,
+        'currentPage': isRead ? widget.book.pageCount : 0,
+        if (isRead) 'finishedReading': FieldValue.serverTimestamp(),
+        if (!isRead) 'finishedReading': null,
+      });
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reading status updated')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating status: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _updateUserRating(BuildContext context, double rating) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final bookRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('lists')
+          .doc(widget.listId)
+          .collection('books')
+          .doc(widget.book.isbn);
+
+      await bookRef.update({
+        'userRating': rating,
+      });
+
+      setState(() {
+        _userRating = rating;
+      });
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Rating updated')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating rating: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.9,
+      minChildSize: 0.5,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (BuildContext context, ScrollController scrollController) {
+        return SingleChildScrollView(
+          controller: scrollController,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16.0, 26.0, 16.0, 16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (widget.book.imageUrl != null)
+                      Image.network(
+                        widget.book.imageUrl!,
+                        width: 120,
+                        height: 180,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(Icons.book, size: 120),
+                      )
+                    else
+                      const Icon(Icons.book, size: 120),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.book.title,
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          if (widget.book.authors != null &&
+                              widget.book.authors!.isNotEmpty)
+                            Text(
+                              widget.book.authors!.join(', '),
+                              style: Theme.of(context).textTheme.titleMedium,
                             ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          book.title,
-                          style: Theme.of(modalContext).textTheme.headlineSmall,
-                        ),
-                        const SizedBox(height: 16),
-                        if (book.imageUrl != null)
-                          Center(
-                            child: Image.network(
-                              book.imageUrl!,
-                              height: 200,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  const Icon(Icons.broken_image, size: 100),
+                          if (widget.book.publisher != null)
+                            Text(
+                              'Published by ${widget.book.publisher}',
+                              style: Theme.of(context).textTheme.bodySmall,
                             ),
-                          )
-                        else
-                          const Center(child: Icon(Icons.book, size: 100)),
-                        const SizedBox(height: 8),
-                        Center(child: Text('ISBN: ${book.isbn}')),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Authors:',
-                          style: Theme.of(modalContext).textTheme.titleMedium,
-                        ),
-                        Text(book.authors?.join(', ') ?? 'Unknown'),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Genres:',
-                          style: Theme.of(modalContext).textTheme.titleMedium,
-                        ),
-                        Text(book.categories?.join(', ') ?? 'None'),
-                        const SizedBox(height: 16),
-                        if (!isInfoExpanded)
-                          TextButton(
-                            onPressed: () {
-                              setModalState(() {
-                                isInfoExpanded = true;
-                              });
-                            },
-                            child: const Text('Expand'),
-                          ),
-                        if (isInfoExpanded) ...[
-                          Text(
-                            'Publisher:',
-                            style: Theme.of(modalContext).textTheme.titleMedium,
-                          ),
-                          Text(book.publisher ?? 'Unknown'),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Published Date:',
-                            style: Theme.of(modalContext).textTheme.titleMedium,
-                          ),
-                          Text(book.publishedDate ?? 'Unknown'),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Page Count:',
-                            style: Theme.of(modalContext).textTheme.titleMedium,
-                          ),
-                          Text(book.pageCount?.toString() ?? 'Unknown'),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Average Rating:',
-                            style: Theme.of(modalContext).textTheme.titleMedium,
-                          ),
-                          Text(book.averageRating != null
-                              ? '${book.averageRating} / 5'
-                              : 'No rating available'),
-                          const SizedBox(height: 16),
-                          TextButton(
-                            onPressed: () {
-                              setModalState(() {
-                                isInfoExpanded = false;
-                              });
-                            },
-                            child: const Text('Collapse'),
-                          ),
+                          if (widget.book.publishedDate != null)
+                            Text(
+                              'Published: ${widget.book.publishedDate}',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          if (widget.book.pageCount != null)
+                            Text(
+                              '${widget.book.pageCount} pages',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
                         ],
-                        const SizedBox(height: 16),
-                        Text(
-                          'Description:',
-                          style: Theme.of(modalContext).textTheme.titleMedium,
-                        ),
-                        Text(
-                          book.description,
-                          maxLines: isDescriptionExpanded ? null : 6,
-                          overflow: isDescriptionExpanded
-                              ? null
-                              : TextOverflow.ellipsis,
-                        ),
-                        if (book.description.length > 100)
-                          TextButton(
-                            onPressed: () {
-                              setModalState(() {
-                                isDescriptionExpanded = !isDescriptionExpanded;
-                              });
-                            },
-                            child: Text(
-                                isDescriptionExpanded ? 'Collapse' : 'Expand'),
-                          ),
-                        const SizedBox(height: 16),
-                        Center(
-                          child: Column(
-                            children: [
-                              Text(
-                                'Your Rating:',
-                                style: Theme.of(modalContext)
-                                    .textTheme
-                                    .titleMedium,
-                              ),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: List.generate(5, (index) {
-                                  return IconButton(
-                                    icon: Icon(
-                                      index < currentRating
-                                          ? Icons.star
-                                          : Icons.star_border,
-                                      color: index < currentRating
-                                          ? Colors.amber
-                                          : Colors.grey,
-                                    ),
-                                    onPressed: () async {
-                                      final newRating = index + 1;
-                                      print(
-                                          'Setting rating to $newRating stars for ${book.title}');
-                                      setModalState(() {
-                                        currentRating = newRating;
-                                      });
-                                      try {
-                                        await bookService.updateBookRating(
-                                            book.isbn,
-                                            book.title,
-                                            newRating,
-                                            selectedListName,
-                                            selectedListId);
-                                      } catch (e) {
-                                        setModalState(() {
-                                          currentRating = book
-                                              .userRating; // Revert on error
-                                        });
-                                      }
-                                    },
-                                  );
-                                }),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            TextButton(
-                              onPressed: isDeleting
-                                  ? null
-                                  : () async {
-                                      print(
-                                          'Delete button pressed for: ${book.title}');
-                                      setModalState(() {
-                                        isDeleting = true;
-                                        print('Set isDeleting = true');
-                                      });
-                                      try {
-                                        await bookService.deleteBook(
-                                            book.isbn,
-                                            book.title,
-                                            selectedListName,
-                                            selectedListId);
-                                        print('Delete operation completed');
-                                        if (modalContext.mounted) {
-                                          ScaffoldMessenger.of(modalContext)
-                                              .showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                  'Book deleted from $selectedListName: ${book.title}'),
-                                            ),
-                                          );
-                                        }
-                                      } catch (e, stackTrace) {
-                                        print('Error in delete operation: $e');
-                                        print('Stack trace: $stackTrace');
-                                        if (modalContext.mounted) {
-                                          ScaffoldMessenger.of(modalContext)
-                                              .showSnackBar(
-                                            SnackBar(content: Text('$e')),
-                                          );
-                                        }
-                                      } finally {
-                                        print(
-                                            'Entering finally block for book delete');
-                                        if (modalContext.mounted) {
-                                          setModalState(() {
-                                            isDeleting = false;
-                                            print('Reset isDeleting = false');
-                                          });
-                                          print('Scheduling modal dismissal');
-                                          await Future.delayed(const Duration(
-                                              milliseconds: 100));
-                                          if (modalContext.mounted) {
-                                            print(
-                                                'Dismissing book details sheet');
-                                            Navigator.of(modalContext).pop();
-                                          } else {
-                                            print(
-                                                'Modal context not mounted, cannot pop');
-                                          }
-                                        } else {
-                                          print(
-                                              'Modal context not mounted in finally block');
-                                        }
-                                      }
-                                    },
-                              child: isDeleting
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2),
-                                    )
-                                  : const Text(
-                                      'Delete',
-                                      style: TextStyle(color: Colors.red),
-                                    ),
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                print(
-                                    'OK button pressed, dismissing book details');
-                                Navigator.of(modalContext).pop();
-                              },
-                              child: const Text('OK'),
-                            ),
-                          ],
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ),
+                const SizedBox(height: 16),
+                if (widget.book.description != null) ...[
+                  Text(
+                    'Description',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.book.description!,
+                        maxLines: _isDescriptionExpanded ? null : 5,
+                        overflow: _isDescriptionExpanded
+                            ? null
+                            : TextOverflow.ellipsis,
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _isDescriptionExpanded = !_isDescriptionExpanded;
+                          });
+                        },
+                        child: Text(
+                            _isDescriptionExpanded ? 'Show Less' : 'Show More'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (widget.book.categories != null &&
+                    widget.book.categories!.isNotEmpty) ...[
+                  Text(
+                    'Categories',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: widget.book.categories!
+                        .map((category) => Chip(label: Text(category)))
+                        .toList(),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (widget.book.tags != null &&
+                    widget.book.tags!.isNotEmpty) ...[
+                  Text(
+                    'Tags',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: widget.book.tags!
+                        .map((tag) => Chip(label: Text(tag)))
+                        .toList(),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                Text(
+                  'Your Rating',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    ...List.generate(5, (index) {
+                      return IconButton(
+                        icon: Icon(
+                          index < _userRating ? Icons.star : Icons.star_border,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        onPressed: () {
+                          _updateUserRating(context, index + 1.0);
+                        },
+                      );
+                    }),
+                    const SizedBox(width: 8),
+                    Text('${_userRating.toInt()}/5'),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Reading Status',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  title: const Text('Mark as read'),
+                  value: widget.book.isRead,
+                  onChanged: (value) {
+                    if (value != null) {
+                      _updateReadingStatus(context, value);
+                    }
+                  },
+                ),
+              ],
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }

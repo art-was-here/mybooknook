@@ -1,79 +1,132 @@
 class Book {
   final String title;
-  final String description;
-  final String isbn;
+  final List<String>? authors;
+  final String? description;
   final String? imageUrl;
+  final String isbn;
+  final String? publishedDate;
+  final String? publisher;
+  final int? pageCount;
+  final List<String>? categories;
+  final List<String>? tags;
+  final bool isRead;
+  final int? currentPage;
+  final DateTime? startedReading;
+  final DateTime? finishedReading;
   final double? averageRating;
   final int? ratingsCount;
-  final List<String>? authors;
-  final List<String>? categories;
-  final String? publisher;
-  final String? publishedDate;
-  final int? pageCount;
-  final int userRating;
-  final DateTime? dateAdded;
-  final DateTime? releaseDate;
-  final List<String>? tags; // Add tags field
+  final double? userRating;
 
   Book({
     required this.title,
-    required this.description,
-    required this.isbn,
+    this.authors,
+    this.description,
     this.imageUrl,
+    required this.isbn,
+    this.publishedDate,
+    this.publisher,
+    this.pageCount,
+    this.categories,
+    this.tags,
+    this.isRead = false,
+    this.currentPage,
+    this.startedReading,
+    this.finishedReading,
     this.averageRating,
     this.ratingsCount,
-    this.authors,
-    this.categories,
-    this.publisher,
-    this.publishedDate,
-    this.pageCount,
-    this.userRating = 0,
-    this.dateAdded,
-    this.releaseDate,
-    this.tags,
+    this.userRating,
   });
-
-  factory Book.fromMap(Map<String, dynamic> map) {
-    return Book(
-      title: map['title'] ?? 'Unknown Title',
-      description: map['description'] ?? 'No description available',
-      isbn: map['isbn'] ?? '',
-      imageUrl: map['imageUrl'],
-      averageRating: map['averageRating']?.toDouble(),
-      ratingsCount: map['ratingsCount'],
-      authors:
-          map['authors'] != null ? List<String>.from(map['authors']) : null,
-      categories: map['categories'] != null
-          ? List<String>.from(map['categories'])
-          : null,
-      publisher: map['publisher'],
-      publishedDate: map['publishedDate'],
-      pageCount: map['pageCount'],
-      userRating: map['userRating'] ?? 0,
-      dateAdded: map['createdAt']?.toDate(),
-      releaseDate: map['publishedDate'] != null
-          ? DateTime.tryParse(map['publishedDate'])
-          : null,
-      tags: map['tags'] != null ? List<String>.from(map['tags']) : null,
-    );
-  }
 
   Map<String, dynamic> toMap() {
     return {
       'title': title,
+      'authors': authors,
       'description': description,
-      'isbn': isbn,
       'imageUrl': imageUrl,
+      'isbn': isbn,
+      'publishedDate': publishedDate,
+      'publisher': publisher,
+      'pageCount': pageCount,
+      'categories': categories,
+      'tags': tags,
+      'isRead': isRead,
+      'currentPage': currentPage,
+      'startedReading': startedReading?.toIso8601String(),
+      'finishedReading': finishedReading?.toIso8601String(),
       'averageRating': averageRating,
       'ratingsCount': ratingsCount,
-      'authors': authors,
-      'categories': categories,
-      'publisher': publisher,
-      'publishedDate': publishedDate,
-      'pageCount': pageCount,
       'userRating': userRating,
-      'createdAt': dateAdded ?? DateTime.now(),
-      'tags': tags,
     };
+  }
+
+  factory Book.fromMap(Map<String, dynamic> map) {
+    return Book(
+      title: map['title']?.toString() ?? 'Unknown Title',
+      authors: (map['authors'] as List<dynamic>?)?.cast<String>(),
+      description: map['description']?.toString(),
+      imageUrl: map['imageUrl']?.toString(),
+      isbn: map['isbn']?.toString() ?? '',
+      publishedDate: map['publishedDate']?.toString(),
+      publisher: map['publisher']?.toString(),
+      pageCount: map['pageCount'] as int?,
+      categories: (map['categories'] as List<dynamic>?)?.cast<String>(),
+      tags: (map['tags'] as List<dynamic>?)?.cast<String>(),
+      isRead: map['isRead'] as bool? ?? false,
+      currentPage: map['currentPage'] as int?,
+      startedReading: map['startedReading'] != null
+          ? DateTime.parse(map['startedReading'])
+          : null,
+      finishedReading: map['finishedReading'] != null
+          ? DateTime.parse(map['finishedReading'])
+          : null,
+      averageRating: map['averageRating'] as double?,
+      ratingsCount: map['ratingsCount'] as int?,
+      userRating: map['userRating'] as double?,
+    );
+  }
+
+  Book copyWith({
+    String? title,
+    List<String>? authors,
+    String? description,
+    String? imageUrl,
+    String? isbn,
+    String? publishedDate,
+    String? publisher,
+    int? pageCount,
+    List<String>? categories,
+    List<String>? tags,
+    bool? isRead,
+    int? currentPage,
+    DateTime? startedReading,
+    DateTime? finishedReading,
+    double? averageRating,
+    int? ratingsCount,
+    double? userRating,
+  }) {
+    return Book(
+      title: title ?? this.title,
+      authors: authors ?? this.authors,
+      description: description ?? this.description,
+      imageUrl: imageUrl ?? this.imageUrl,
+      isbn: isbn ?? this.isbn,
+      publishedDate: publishedDate ?? this.publishedDate,
+      publisher: publisher ?? this.publisher,
+      pageCount: pageCount ?? this.pageCount,
+      categories: categories ?? this.categories,
+      tags: tags ?? this.tags,
+      isRead: isRead ?? this.isRead,
+      currentPage: currentPage ?? this.currentPage,
+      startedReading: startedReading ?? this.startedReading,
+      finishedReading: finishedReading ?? this.finishedReading,
+      averageRating: averageRating ?? this.averageRating,
+      ratingsCount: ratingsCount ?? this.ratingsCount,
+      userRating: userRating ?? this.userRating,
+    );
+  }
+
+  double get readingProgress {
+    if (pageCount == null || currentPage == null) return 0.0;
+    return (currentPage! / pageCount!) * 100;
   }
 }

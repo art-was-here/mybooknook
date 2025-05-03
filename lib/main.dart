@@ -3,7 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'widgets/home_screen.dart';
-import 'widgets/settings.dart';
+import 'screens/settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -95,8 +95,11 @@ class _MyAppState extends State<MyApp> {
             ),
         '/settings': (context) => SettingsScreen(
               onThemeChanged: _onThemeChanged,
-              initialAccentColor: _accentColor,
               onAccentColorChanged: _onAccentColorChanged,
+              onSortOrderChanged: (value) {
+                // TODO: Implement sort order change
+              },
+              accentColor: _accentColor,
             ),
       },
     );
