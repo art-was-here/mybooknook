@@ -46,11 +46,14 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  void _onAccentColorChanged(Color color) {
+  void _onAccentColorChanged(Color color) async {
     if (mounted) {
       setState(() {
         _accentColor = color;
       });
+      // Save the accent color
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('accentColor', color.value);
     }
   }
 
