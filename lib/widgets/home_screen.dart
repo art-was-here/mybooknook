@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/book.dart';
 import '../services/book_service.dart';
 import '../services/barcode_service.dart';
+import '../services/text_recognition_service.dart';
 import 'book_search_sheet.dart';
 import 'book_details_card.dart';
 import 'dart:async';
@@ -38,7 +39,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final _fabKey = GlobalKey<ExpandableFabState>();
   String? _errorMessage;
   bool _isLoading = true;
-  late BookService _bookService;
+  BookService? _bookService;
   StreamSubscription<User?>? _authSubscription;
   String _sortPreference = 'title';
   Map<String, String> _listNamesCache = {};
@@ -49,7 +50,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final Map<String, Book> _bookCache = {};
   final Map<String, DateTime> _bookCacheTimestamps = {};
   static const Duration _cacheExpiry = Duration(hours: 1);
-  late final ListManager _listManager;
+  ListManager? _listManager;
+  late BuildContext _buildContext;
 
   @override
   void initState() {
@@ -60,9 +62,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _initializeFirestore();
     _initializeDatabase();
     _ensureIndexes();
-    _bookService = BookService(this.context);
-    _listManager = ListManager(this.context);
-    _listManager.loadExpandedStates();
 
     // Check authentication state immediately
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -420,7 +419,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _authSubscription?.cancel();
-    _listManager.dispose();
+    _listManager?.dispose();
     print('HomeScreen dispose: Canceled auth subscription and list manager');
     super.dispose();
   }
@@ -785,37 +784,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> scanBarcode(BuildContext context) async {
-    try {
-      final barcode = await BarcodeService.scanBarcode();
-      if (barcode != null) {
-        final book = await _bookService.searchBooks(barcode);
-        if (book.isNotEmpty) {
-          if (!mounted) return;
-          await _showAddToListDialog(context, book.first);
-        } else {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Book not found')),
-          );
-        }
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error scanning barcode: $e')),
-      );
-    }
-  }
-
-  Future<void> _onBookTap(BuildContext context, Book book) async {
-    if (!mounted) return;
-    BookDetailsCard.show(
-        context, book, _selectedListName, _bookService, _selectedListId);
-  }
-
   @override
   Widget build(BuildContext context) {
+    _buildContext = context;
+    // Initialize services with the current context if they haven't been initialized yet
+    _bookService ??= BookService(context);
+    _listManager ??= ListManager(context);
+    _listManager?.loadExpandedStates();
+
     final user = FirebaseAuth.instance.currentUser;
     print(
         'Building HomeScreen for user: ${user?.email ?? "No user"}, UID: ${user?.uid ?? "No UID"}');
@@ -1032,7 +1008,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         final displayItems = <dynamic>[];
                         for (var listName in sortedListNames) {
                           displayItems.add(listName);
-                          if (_listManager.expandedLists[listName] ?? true) {
+                          if (_listManager?.expandedLists[listName] ?? true) {
                             displayItems.addAll(groupedBooks[listName]!);
                           }
                         }
@@ -1046,9 +1022,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               final bookCount =
                                   groupedBooks[listName]?.length ?? 0;
                               final isExpanded =
-                                  _listManager.expandedLists[listName] ?? true;
+                                  _listManager?.expandedLists[listName] ?? true;
                               final animation = _listManager
-                                  .getAnimationForList(listName, this);
+                                      ?.getAnimationForList(listName, this) ??
+                                  AlwaysStoppedAnimation(1.0);
 
                               return ListItem(
                                 listName: listName,
@@ -1057,8 +1034,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 isExpanded: isExpanded,
                                 animation: animation,
                                 accentColor: widget.accentColor,
-                                onToggleExpanded: (name) =>
-                                    _listManager.toggleListExpanded(name, this),
+                                onToggleExpanded: (name) => _listManager
+                                    ?.toggleListExpanded(name, this),
                                 onBookTap: _onBookTap,
                               );
                             }
@@ -1097,7 +1074,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 state.toggle();
               }
               BookSearchSheet.show(
-                  context, _selectedListId, _selectedListName, _bookService);
+                  context, _selectedListId, _selectedListName, _bookService!);
             },
             child: const Icon(Icons.search),
             tooltip: 'Search by Title or ISBN',
@@ -1113,10 +1090,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 print('Toggling FAB closed');
                 state.toggle();
               }
-              scanBarcode(context);
+              scanBarcode();
             },
             child: const Icon(Icons.camera_alt),
-            tooltip: 'Scan Barcode',
+            tooltip: 'Scan ISBN',
           ),
         ],
       ),
@@ -1384,5 +1361,103 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       ),
     ];
+  }
+
+  Future<void> scanBarcode() async {
+    if (!mounted) return;
+
+    try {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+
+      final isbn = await TextRecognitionService.scanISBN();
+
+      if (isbn == null) {
+        if (!mounted) return;
+        setState(() {
+          _errorMessage = 'No ISBN found in the image. Please try again.';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Check cache first
+      final cachedBook = await _getCachedBook(isbn);
+      if (cachedBook != null) {
+        if (!mounted) return;
+        _showBookDetails(cachedBook);
+        return;
+      }
+
+      // Fetch book details from Google Books API
+      final book = await _bookService!.fetchBookDetails(isbn);
+      if (book == null) {
+        if (!mounted) return;
+        setState(() {
+          _errorMessage = 'Book not found. Please try again.';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Cache the book
+      await _cacheBook(book, _selectedListId ?? '', _selectedListName);
+
+      // Show book details
+      if (!mounted) return;
+      _showBookDetails(book);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'Error scanning book: $e';
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(_buildContext).showSnackBar(
+        SnackBar(content: Text('Error scanning book: $e')),
+      );
+    }
+  }
+
+  void _showBookDetails(Book book) {
+    setState(() {
+      _isLoading = false;
+    });
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: _buildContext,
+      isScrollControlled: true,
+      builder: (BuildContext modalContext) => BookDetailsCard(
+        book: book,
+        listName: _selectedListName,
+        bookService: BookService(modalContext),
+        onAddToList: (listId) async {
+          await _addBookToList(book, listId);
+        },
+        lists: _listNamesCache,
+      ),
+    );
+  }
+
+  Future<void> _addBookToList(Book book, String listId) async {
+    try {
+      await _bookService!.addBookToList(book, listId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(_buildContext).showSnackBar(
+        const SnackBar(content: Text('Book added successfully')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(_buildContext).showSnackBar(
+        SnackBar(content: Text('Error adding book: $e')),
+      );
+    }
+  }
+
+  void _onBookTap(BuildContext context, Book book) {
+    _showBookDetails(book);
   }
 }

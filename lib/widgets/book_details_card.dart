@@ -9,6 +9,8 @@ class BookDetailsCard extends StatefulWidget {
   final String listName;
   final BookService bookService;
   final String? listId;
+  final Function(String)? onAddToList;
+  final Map<String, String>? lists;
 
   const BookDetailsCard({
     super.key,
@@ -16,6 +18,8 @@ class BookDetailsCard extends StatefulWidget {
     required this.listName,
     required this.bookService,
     this.listId,
+    this.onAddToList,
+    this.lists,
   });
 
   static void show(BuildContext context, Book book, String listName,

@@ -324,4 +324,46 @@ class BookService {
       throw Exception(errorMessage);
     }
   }
+
+  Future<void> addBookToList(Book book, String listId) async {
+    print('Adding book to list: ${book.title}, ISBN: ${book.isbn}');
+    final user = FirebaseAuth.instance.currentUser!;
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('lists')
+          .doc(listId)
+          .collection('books')
+          .doc(book.isbn)
+          .set({
+        'title': book.title,
+        'description': book.description,
+        'isbn': book.isbn,
+        'imageUrl': book.imageUrl,
+        'averageRating': book.averageRating,
+        'ratingsCount': book.ratingsCount,
+        'authors': book.authors,
+        'categories': book.categories,
+        'publisher': book.publisher,
+        'publishedDate': book.publishedDate,
+        'pageCount': book.pageCount,
+        'userRating': 0,
+        'addedAt': FieldValue.serverTimestamp(),
+      }).timeout(const Duration(seconds: 5), onTimeout: () {
+        print('Add book timed out');
+        throw Exception('Add book timed out');
+      });
+      print('Book added to list: ${book.title}');
+    } catch (e, stackTrace) {
+      print('Error adding book: $e');
+      print('Stack trace: $stackTrace');
+      String errorMessage = 'Error adding book: $e';
+      if (e.toString().contains('permission-denied')) {
+        errorMessage =
+            'Permission denied adding book. Please sign out and sign in again.';
+      }
+      throw Exception(errorMessage);
+    }
+  }
 }
