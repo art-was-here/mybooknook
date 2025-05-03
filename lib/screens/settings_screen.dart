@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:convert';
 import '../models/settings.dart' as app_settings;
 import '../models/book.dart';
@@ -139,6 +140,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (user == null) return;
 
     try {
+      // First, re-authenticate the user
+      final credential =
+          await FirebaseAuth.instance.signInWithProvider(GoogleAuthProvider());
+      if (credential.user == null) {
+        throw Exception('Re-authentication failed');
+      }
+
       // Delete user data from Firestore
       await FirebaseFirestore.instance
           .collection('users')

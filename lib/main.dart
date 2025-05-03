@@ -113,18 +113,33 @@ class AuthScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
-        child: ElevatedButton(
-          onPressed: () async {
-            try {
-              await FirebaseAuth.instance
-                  .signInWithProvider(GoogleAuthProvider());
-            } catch (e) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Error signing in: $e')),
-              );
-            }
-          },
-          child: const Text('Sign in with Google'),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Welcome to myBookNook!',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Please sign-in to get started',
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton(
+              onPressed: () async {
+                try {
+                  await FirebaseAuth.instance
+                      .signInWithProvider(GoogleAuthProvider());
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error signing in: $e')),
+                  );
+                }
+              },
+              child: const Text('Sign in with Google'),
+            ),
+          ],
         ),
       ),
     );
