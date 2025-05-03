@@ -1,16 +1,7 @@
-# mybooknook
+# myBookNook
 
-A new Flutter project.
+A cross-platform application to manage your personal library.
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+See the releases page for the latest version. Currently only android is supported as an official release but you are more then welcome to clone the repo and attempt to get an iOS, Linux, MacOS or Windows version running.
