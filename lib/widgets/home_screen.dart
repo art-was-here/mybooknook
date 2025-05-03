@@ -12,16 +12,9 @@ import 'book_details_card.dart';
 import 'dart:async';
 import 'package:flutter_expandable_fab/flutter_expandable_fab.dart';
 import 'dart:convert';
-
-// Helper class to store book and its list information
-class BookWithList {
-  final Book book;
-  final String listId;
-  final String listName;
-
-  BookWithList(
-      {required this.book, required this.listId, required this.listName});
-}
+import 'home_screen/list_item.dart';
+import 'home_screen/list_manager.dart';
+import 'home_screen/book_with_list.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
@@ -56,9 +49,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final Map<String, Book> _bookCache = {};
   final Map<String, DateTime> _bookCacheTimestamps = {};
   static const Duration _cacheExpiry = Duration(hours: 1);
-  final Map<String, bool> _expandedLists = {};
-  final Map<String, AnimationController> _animationControllers = {};
-  final Map<String, Animation<double>> _listAnimations = {};
+  late final ListManager _listManager;
 
   @override
   void initState() {
@@ -70,7 +61,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _initializeDatabase();
     _ensureIndexes();
     _bookService = BookService(this.context);
-    _loadExpandedStates();
+    _listManager = ListManager(this.context);
+    _listManager.loadExpandedStates();
 
     // Check authentication state immediately
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -428,12 +420,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _authSubscription?.cancel();
-    // Dispose all animation controllers
-    for (var controller in _animationControllers.values) {
-      controller.dispose();
-    }
-    print(
-        'HomeScreen dispose: Canceled auth subscription and animation controllers');
+    _listManager.dispose();
+    print('HomeScreen dispose: Canceled auth subscription and list manager');
     super.dispose();
   }
 
@@ -1044,7 +1032,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         final displayItems = <dynamic>[];
                         for (var listName in sortedListNames) {
                           displayItems.add(listName);
-                          if (_expandedLists[listName] ?? true) {
+                          if (_listManager.expandedLists[listName] ?? true) {
                             displayItems.addAll(groupedBooks[listName]!);
                           }
                         }
@@ -1058,139 +1046,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               final bookCount =
                                   groupedBooks[listName]?.length ?? 0;
                               final isExpanded =
-                                  _expandedLists[listName] ?? true;
+                                  _listManager.expandedLists[listName] ?? true;
+                              final animation = _listManager
+                                  .getAnimationForList(listName, this);
 
-                              // Ensure animation controller exists for this list
-                              if (!_animationControllers
-                                  .containsKey(listName)) {
-                                _animationControllers[listName] =
-                                    AnimationController(
-                                  vsync: this,
-                                  duration: const Duration(milliseconds: 300),
-                                );
-                                _listAnimations[listName] = CurvedAnimation(
-                                  parent: _animationControllers[listName]!,
-                                  curve: Curves.easeInOut,
-                                );
-                                if (isExpanded) {
-                                  _animationControllers[listName]!.value = 1.0;
-                                }
-                              }
-
-                              final animation = _listAnimations[listName]!;
-
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (index > 0) const SizedBox(height: 1.0),
-                                  Card(
-                                    elevation: 2,
-                                    color: widget.accentColor.withOpacity(0.1),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 16.0, vertical: 8.0),
-                                          child: Row(
-                                            children: [
-                                              Text(
-                                                listName,
-                                                style: Theme.of(listContext)
-                                                    .textTheme
-                                                    .titleMedium
-                                                    ?.copyWith(
-                                                        fontWeight:
-                                                            FontWeight.bold),
-                                              ),
-                                              const Spacer(),
-                                              IconButton(
-                                                icon: Icon(
-                                                  isExpanded
-                                                      ? Icons.expand_less
-                                                      : Icons.expand_more,
-                                                ),
-                                                onPressed: () {
-                                                  _toggleListExpanded(listName);
-                                                },
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        const Divider(height: 1),
-                                        ListTile(
-                                          title: Text(
-                                            '${bookCount} book${bookCount == 1 ? '' : 's'}',
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodyMedium,
-                                          ),
-                                        ),
-                                        SizeTransition(
-                                          sizeFactor: animation,
-                                          child: Column(
-                                            children: groupedBooks[listName]
-                                                    ?.map((bookWithList) {
-                                                  final book =
-                                                      bookWithList.book;
-                                                  final isFirstBook =
-                                                      bookWithList ==
-                                                          groupedBooks[listName]
-                                                              ?.first;
-                                                  final isLastBook =
-                                                      bookWithList ==
-                                                          groupedBooks[listName]
-                                                              ?.last;
-
-                                                  return ListTile(
-                                                    contentPadding:
-                                                        const EdgeInsets
-                                                            .symmetric(
-                                                            horizontal: 16.0),
-                                                    leading: book.imageUrl !=
-                                                            null
-                                                        ? Image.network(
-                                                            book.imageUrl!,
-                                                            width: 50,
-                                                            height: 75,
-                                                            fit: BoxFit.cover,
-                                                            errorBuilder: (BuildContext
-                                                                        imageContext,
-                                                                    Object
-                                                                        error,
-                                                                    StackTrace?
-                                                                        stackTrace) =>
-                                                                const Icon(
-                                                                    Icons.book,
-                                                                    size: 50),
-                                                          )
-                                                        : const Icon(Icons.book,
-                                                            size: 50),
-                                                    title: Text(book.title),
-                                                    subtitle: Text(
-                                                      book.authors
-                                                              ?.join(', ') ??
-                                                          'Unknown Author',
-                                                      maxLines: 1,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                    ),
-                                                    onTap: () => _onBookTap(
-                                                        context, book),
-                                                  );
-                                                }).toList() ??
-                                                [],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
+                              return ListItem(
+                                listName: listName,
+                                bookCount: bookCount,
+                                books: groupedBooks[listName],
+                                isExpanded: isExpanded,
+                                animation: animation,
+                                accentColor: widget.accentColor,
+                                onToggleExpanded: (name) =>
+                                    _listManager.toggleListExpanded(name, this),
+                                onBookTap: _onBookTap,
                               );
-                            } else if (item is BookWithList) {
-                              // Skip book items as they're now shown in the SizeTransition
-                              return const SizedBox.shrink();
                             }
                             return const SizedBox.shrink();
                           },
@@ -1514,58 +1384,5 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       ),
     ];
-  }
-
-  Future<void> _loadExpandedStates() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final expandedStates = prefs.getString('expandedLists');
-      if (expandedStates != null) {
-        final Map<String, dynamic> states = json.decode(expandedStates);
-        setState(() {
-          states.forEach((key, value) {
-            _expandedLists[key] = value as bool;
-          });
-        });
-      }
-    } catch (e) {
-      print('Error loading expanded states: $e');
-    }
-  }
-
-  Future<void> _saveExpandedStates() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('expandedLists', json.encode(_expandedLists));
-    } catch (e) {
-      print('Error saving expanded states: $e');
-    }
-  }
-
-  void _toggleListExpanded(String listName) {
-    setState(() {
-      final isExpanded = _expandedLists[listName] ?? true;
-      _expandedLists[listName] = !isExpanded;
-
-      // Create or update animation controller for this list
-      if (!_animationControllers.containsKey(listName)) {
-        _animationControllers[listName] = AnimationController(
-          vsync: this,
-          duration: const Duration(milliseconds: 300),
-        );
-        _listAnimations[listName] = CurvedAnimation(
-          parent: _animationControllers[listName]!,
-          curve: Curves.easeInOut,
-        );
-      }
-
-      if (isExpanded) {
-        _animationControllers[listName]!.reverse();
-      } else {
-        _animationControllers[listName]!.forward();
-      }
-
-      _saveExpandedStates();
-    });
   }
 }
