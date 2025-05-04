@@ -16,6 +16,7 @@ import 'dart:convert';
 import 'home_screen/list_item.dart';
 import 'home_screen/list_manager.dart';
 import 'home_screen/book_with_list.dart';
+import 'scan_book_details_card.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
@@ -930,6 +931,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ? FirebaseFirestore.instance
                               .collectionGroup('books')
                               .where('userId', isEqualTo: user!.uid)
+                              .orderBy('createdAt', descending: true)
                               .snapshots()
                           : FirebaseFirestore.instance
                               .collection('users')
@@ -937,6 +939,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               .collection('lists')
                               .doc(_selectedListId)
                               .collection('books')
+                              .orderBy('createdAt', descending: true)
                               .snapshots(),
                       builder: (context, snapshot) {
                         if (snapshot.hasError) {
@@ -993,6 +996,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             listId = _selectedListId!;
                             listName = _selectedListName;
                           }
+
+                          print('Processing book: ${book.title}');
+                          print(
+                              'Book ${book.title} belongs to list: $listName (ID: $listId)');
+                          print('Book data: $data');
 
                           groupedBooks
                               .putIfAbsent(listName, () => [])
@@ -1196,7 +1204,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         // For Home view, get all books from all lists
         query = FirebaseFirestore.instance
             .collectionGroup('books')
-            .where('userId', isEqualTo: user.uid);
+            .where('userId', isEqualTo: user.uid)
+            .orderBy('createdAt', descending: true);
       } else {
         print('Executing Firestore query for list $_selectedListId');
         // For specific list, get only books from that list
@@ -1205,7 +1214,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             .doc(user.uid)
             .collection('lists')
             .doc(_selectedListId)
-            .collection('books');
+            .collection('books')
+            .orderBy('createdAt', descending: true);
       }
 
       final querySnapshot = await query.get();
@@ -1287,12 +1297,33 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   List<PopupMenuEntry<String>> _buildListMenuItems(BuildContext context) {
     return [
       PopupMenuItem<String>(
+        value: 'home',
+        onTap: () async {
+          if (mounted) {
+            setState(() {
+              _selectedListId = null;
+              _selectedListName = 'Home';
+            });
+            // First ensure we have the Home list initialized
+            await _initializeDefaultList();
+            // Then load the books
+            await _loadBooks();
+          }
+        },
+        child: const ListTile(
+          title: Text('Home'),
+        ),
+      ),
+      const PopupMenuDivider(),
+      PopupMenuItem<String>(
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseAuth.instance.currentUser != null
               ? FirebaseFirestore.instance
                   .collection('users')
                   .doc(FirebaseAuth.instance.currentUser!.uid)
                   .collection('lists')
+                  .where('name', isNotEqualTo: 'Home')
+                  .orderBy('name')
                   .orderBy('createdAt')
                   .snapshots()
               : Stream.empty(),
@@ -1303,29 +1334,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 title: Text('Loading lists...'),
               );
             }
+
             if (snapshot.hasError) {
-              String errorMessage = 'Error loading lists: ${snapshot.error}';
-              if (snapshot.error.toString().contains('permission-denied')) {
-                errorMessage =
-                    'Permission denied loading lists. Please sign out and sign in again.';
-              }
               return ListTile(
-                title: Text(errorMessage),
-                trailing: IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: () {
-                    if (mounted) {
-                      setState(() {});
-                    }
-                  },
-                ),
+                title: Text('Error: ${snapshot.error}'),
               );
             }
+
             if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
               return const ListTile(
-                title: Text('No lists available'),
+                title: Text('No lists found'),
               );
             }
+
             return Column(
               children: snapshot.data!.docs.map((doc) {
                 final data = doc.data() as Map<String, dynamic>;
@@ -1339,20 +1360,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         _selectedListId = listId;
                         _selectedListName = listName;
                       });
-                      // Trigger a reload of books for the new list
                       await _loadBooks();
                     }
                   },
                   child: ListTile(
                     title: Text(listName),
-                    trailing: listName == 'Home'
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () {
-                              _deleteList(context, listId);
-                            },
-                          ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () {
+                        _deleteList(context, listId);
+                      },
+                    ),
                   ),
                 );
               }).toList(),
@@ -1387,7 +1405,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final cachedBook = await _getCachedBook(isbn);
       if (cachedBook != null) {
         if (!mounted) return;
-        _showBookDetails(cachedBook);
+        _showBookDetails(cachedBook, isScanned: true);
         return;
       }
 
@@ -1407,7 +1425,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
       // Show book details
       if (!mounted) return;
-      _showBookDetails(book);
+      _showBookDetails(book, isScanned: true);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -1420,7 +1438,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  void _showBookDetails(Book book) {
+  void _showBookDetails(Book book, {bool isScanned = false}) {
     setState(() {
       _isLoading = false;
     });
@@ -1430,15 +1448,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     showModalBottomSheet(
       context: _buildContext,
       isScrollControlled: true,
-      builder: (BuildContext modalContext) => BookDetailsCard(
-        book: book,
-        listName: _selectedListName,
-        bookService: BookService(modalContext),
-        onAddToList: (listId) async {
-          await _addBookToList(book, listId);
-        },
-        lists: _listNamesCache,
-      ),
+      builder: (BuildContext modalContext) => isScanned
+          ? ScanBookDetailsCard(
+              book: book,
+              bookService: BookService(modalContext),
+              lists: _listNamesCache,
+            )
+          : BookDetailsCard(
+              book: book,
+              listName: _selectedListName,
+              bookService: BookService(modalContext),
+              listId: _selectedListId,
+            ),
     );
   }
 
@@ -1458,6 +1479,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _onBookTap(BuildContext context, Book book) {
-    _showBookDetails(book);
+    _showBookDetails(book, isScanned: false);
   }
 }

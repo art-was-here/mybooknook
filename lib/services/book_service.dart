@@ -349,7 +349,8 @@ class BookService {
         'publishedDate': book.publishedDate,
         'pageCount': book.pageCount,
         'userRating': 0,
-        'addedAt': FieldValue.serverTimestamp(),
+        'userId': user.uid,
+        'createdAt': FieldValue.serverTimestamp(),
       }).timeout(const Duration(seconds: 5), onTimeout: () {
         print('Add book timed out');
         throw Exception('Add book timed out');
