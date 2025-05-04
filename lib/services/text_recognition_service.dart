@@ -58,7 +58,13 @@ class TextRecognitionService {
             .replaceAll(RegExp(r'[S]'), '5') // Replace uppercase S with 5
             .replaceAll(RegExp(r'[s]'), '5') // Replace lowercase s with 5
             .replaceAll(RegExp(r'[Z]'), '2') // Replace uppercase Z with 2
-            .replaceAll(RegExp(r'[z]'), '2'); // Replace lowercase z with 2
+            .replaceAll(RegExp(r'[z]'), '2') // Replace lowercase z with 2
+            .replaceAll(RegExp(r'[D]'), '0') // Replace uppercase D with 0
+            .replaceAll(RegExp(r'[d]'), '0') // Replace lowercase d with 0
+            .replaceAll(RegExp(r'[G]'), '6') // Replace uppercase G with 6
+            .replaceAll(RegExp(r'[g]'), '6') // Replace lowercase g with 6
+            .replaceAll(RegExp(r'[Q]'), '0') // Replace uppercase Q with 0
+            .replaceAll(RegExp(r'[q]'), '0'); // Replace lowercase q with 0
 
         // Normalize spaces and hyphens
         processedText = processedText
@@ -66,7 +72,8 @@ class TextRecognitionService {
             .replaceAll(
                 RegExp(r'[-–—]'), '-') // Normalize different types of hyphens
             .replaceAll(RegExp(r'[.]'), '') // Remove periods
-            .replaceAll(RegExp(r'[,]'), ''); // Remove commas
+            .replaceAll(RegExp(r'[,]'), '') // Remove commas
+            .replaceAll(RegExp(r'[()]'), ''); // Remove parentheses
 
         print('\nProcessed text: "$processedText"');
 
@@ -78,22 +85,50 @@ class TextRecognitionService {
               r'ISBN[- ]*([0-9]{1,5}[- ]?[0-9]{1,7}[- ]?[0-9]{1,6}[- ]?[0-9])',
               caseSensitive: false),
 
+          // ISBN-13 specific patterns
+          RegExp(r'ISBN[- ]*13[- ]*([0-9]{13})', caseSensitive: false),
+          RegExp(
+              r'ISBN[- ]*13[- ]*([0-9]{1,5}[- ]?[0-9]{1,7}[- ]?[0-9]{1,6}[- ]?[0-9])',
+              caseSensitive: false),
+          RegExp(
+              r'ISBN[- ]*13[- ]*(?:978|979)[- ]?[0-9]{1,5}[- ]?[0-9]{1,7}[- ]?[0-9]{1,6}[- ]?[0-9]',
+              caseSensitive: false),
+
+          // ISBN-10 specific patterns
+          RegExp(r'ISBN[- ]*10[- ]*([0-9]{10})', caseSensitive: false),
+          RegExp(
+              r'ISBN[- ]*10[- ]*([0-9]{1,5}[- ]?[0-9]{1,7}[- ]?[0-9]{1,6}[- ]?[0-9])',
+              caseSensitive: false),
+          RegExp(
+              r'ISBN[- ]*10[- ]*[0-9]{1,5}[- ]?[0-9]{1,7}[- ]?[0-9]{1,6}[- ]?[0-9]',
+              caseSensitive: false),
+
           // ISBN-10 patterns
           RegExp(r'\b[0-9]-[0-9]{3}-[0-9]{5}-[0-9]\b'),
+          RegExp(r'\b[0-9]{1,5}[- ]?[0-9]{1,7}[- ]?[0-9]{1,6}[- ]?[0-9]\b'),
           RegExp(r'\b[0-9]{1,5}[- ]?[0-9]{1,7}[- ]?[0-9]{1,6}[- ]?[0-9]\b'),
 
           // ISBN-13 patterns
           RegExp(
               r'\b(?:978|979)[- ]?[0-9]{1,5}[- ]?[0-9]{2,7}[- ]?[0-9]{1,6}[- ]?[0-9]\b'),
+          RegExp(
+              r'\b(?:978|979)[- ]?[0-9]{1,5}[- ]?[0-9]{1,7}[- ]?[0-9]{1,6}[- ]?[0-9]\b'),
+          RegExp(
+              r'\b(?:978|979)[- ]?[0-9]{1,5}[- ]?[0-9]{1,7}[- ]?[0-9]{1,6}[- ]?[0-9]\b'),
 
-          // Any 10 or 13 digit number
-          RegExp(r'\b\d{10}\b'),
-          RegExp(r'\b\d{13}\b'),
-
-          // More flexible patterns
+          // More flexible patterns for both ISBN-10 and ISBN-13
+          RegExp(r'\b[0-9]{1,5}[- ]?[0-9]{1,7}[- ]?[0-9]{1,6}[- ]?[0-9]\b'),
           RegExp(r'\b[0-9]{9,13}\b'), // Any 9-13 digit number
           RegExp(
               r'\b[0-9]{1,5}[- ]?[0-9]{1,7}[- ]?[0-9]{1,6}[- ]?[0-9]\b'), // Any number with hyphens
+
+          // Specific patterns for common formats
+          RegExp(
+              r'\b[0-9]-[0-9]{2,3}-[0-9]{5,6}-[0-9]\b'), // Format like 0-06-098752-9
+          RegExp(
+              r'\b(?:978|979)-[0-9]{1,3}-[0-9]{2,3}-[0-9]{5,6}-[0-9]\b'), // Format like 978-1-5011-8098-9
+          RegExp(
+              r'\b(?:978|979)-[0-9]{1,3}-[0-9]{2,3}-[0-9]{5,6}-[0-9]\b'), // Format like 978-1-95-245746-3
         ];
 
         print('\n=== Pattern Matching Debug ===');
