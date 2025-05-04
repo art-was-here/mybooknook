@@ -54,6 +54,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   ListManager? _listManager;
   late BuildContext _buildContext;
   DateTime? _lastBackPressTime;
+  String? _cachedProfileImage;
+  bool _isProfileImageLoading = true;
 
   @override
   void initState() {
@@ -64,6 +66,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _initializeFirestore();
     _initializeDatabase();
     _ensureIndexes();
+    _loadCachedProfileImage();
 
     // Check authentication state immediately
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -855,27 +858,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.settings),
-              onPressed: () {
-                print('Navigating to settings');
-                Navigator.pushNamed(context, '/settings');
+            GestureDetector(
+              onTap: () {
+                Navigator.pushNamed(context, '/profile');
               },
-              tooltip: 'Settings',
-            ),
-            PopupMenuButton<String>(
-              onSelected: (value) {
-                if (value == 'sign_out' && mounted) {
-                  print('Signing out user: ${user?.email ?? "No user"}');
-                  FirebaseAuth.instance.signOut();
-                }
-              },
-              itemBuilder: (BuildContext popupContext) => [
-                PopupMenuItem(
-                  value: 'sign_out',
-                  child: Text('Sign out (${user?.email ?? "No user"})'),
-                ),
-              ],
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: _isProfileImageLoading
+                    ? const CircleAvatar(
+                        radius: 18,
+                        child: CircularProgressIndicator(),
+                      )
+                    : CircleAvatar(
+                        radius: 18,
+                        backgroundImage: _cachedProfileImage != null
+                            ? MemoryImage(base64Decode(_cachedProfileImage!))
+                                as ImageProvider
+                            : null,
+                        child: _cachedProfileImage == null
+                            ? const Icon(Icons.person)
+                            : null,
+                      ),
+              ),
             ),
           ],
         ),
@@ -1078,18 +1082,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           key: _fabKey,
           type: ExpandableFabType.up,
           distance: 60.0,
-          openButtonBuilder: RotateFloatingActionButtonBuilder(
-            child: const Icon(Icons.add),
-            foregroundColor: Colors.white,
-            backgroundColor: widget.accentColor,
-            shape: const CircleBorder(),
-          ),
-          closeButtonBuilder: DefaultFloatingActionButtonBuilder(
-            child: const Icon(Icons.close),
-            foregroundColor: Colors.white,
-            backgroundColor: widget.accentColor,
-            shape: const CircleBorder(),
-          ),
           children: [
             FloatingActionButton.small(
               heroTag: 'search_fab',
@@ -1125,6 +1117,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               tooltip: 'Scan ISBN',
             ),
           ],
+          openButtonBuilder: RotateFloatingActionButtonBuilder(
+            child: const Icon(Icons.add),
+            foregroundColor: Colors.white,
+            backgroundColor: widget.accentColor,
+            shape: const CircleBorder(),
+          ),
+          closeButtonBuilder: DefaultFloatingActionButtonBuilder(
+            child: const Icon(Icons.close),
+            foregroundColor: Colors.white,
+            backgroundColor: widget.accentColor,
+            shape: const CircleBorder(),
+          ),
         ),
       ),
     );
@@ -1476,11 +1480,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     showModalBottomSheet<Widget>(
       context: _buildContext,
       isScrollControlled: true,
-      builder: (BuildContext modalContext) => ScanBookDetailsCard(
-        book: book,
-        bookService: BookService(modalContext),
-        lists: {_selectedListId ?? '': _selectedListName ?? ''},
-      ),
+      builder: (BuildContext modalContext) => isScanned
+          ? ScanBookDetailsCard(
+              book: book,
+              bookService: BookService(modalContext),
+              lists: {_selectedListId ?? '': _selectedListName ?? ''},
+            )
+          : BookDetailsCard(
+              book: book,
+              bookService: BookService(modalContext),
+              listId: _selectedListId ?? '',
+              listName: _selectedListName ?? '',
+            ),
     );
   }
 
@@ -1501,5 +1512,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   void _onBookTap(BuildContext context, Book book) {
     _showBookDetails(book, isScanned: false);
+  }
+
+  Future<void> _loadCachedProfileImage() async {
+    print('Loading cached profile image');
+    final prefs = await SharedPreferences.getInstance();
+    final cachedImage = prefs.getString('cachedProfileImage');
+    final lastUpdate = prefs.getInt('lastImageUpdate');
+
+    if (cachedImage != null && lastUpdate != null) {
+      final lastUpdateTime = DateTime.fromMillisecondsSinceEpoch(lastUpdate);
+      final timeDifference =
+          DateTime.now().difference(lastUpdateTime).inMinutes;
+
+      if (timeDifference < 5) {
+        print('Using cached profile image');
+        if (mounted) {
+          setState(() {
+            _cachedProfileImage = cachedImage;
+            _isProfileImageLoading = false;
+          });
+        }
+        return;
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _isProfileImageLoading = false;
+      });
+    }
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'widgets/home_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/profile_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -104,6 +105,7 @@ class _MyAppState extends State<MyApp> {
               },
               accentColor: _accentColor,
             ),
+        '/profile': (context) => const ProfileScreen(),
       },
     );
   }
