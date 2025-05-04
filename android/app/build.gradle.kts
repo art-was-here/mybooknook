@@ -19,6 +19,15 @@ android {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("mybooknook_release.keystore")
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
+            keyAlias = "mybooknook"
+            keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+        }
+    }
+
     defaultConfig {
         applicationId = "com.artwashere.mybooknook"
         minSdk = flutter.minSdkVersion
@@ -29,9 +38,16 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
+}
+
+dependencies {
+    implementation("com.google.android.play:core:1.10.3")
+    implementation("com.google.android.play:core-ktx:1.8.1")
 }
 
 flutter {
