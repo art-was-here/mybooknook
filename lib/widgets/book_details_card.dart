@@ -11,6 +11,7 @@ class BookDetailsCard extends StatefulWidget {
   final String? listId;
   final Function(String)? onAddToList;
   final Map<String, String>? lists;
+  final String? actualListId;
 
   const BookDetailsCard({
     super.key,
@@ -20,10 +21,12 @@ class BookDetailsCard extends StatefulWidget {
     this.listId,
     this.onAddToList,
     this.lists,
+    this.actualListId,
   });
 
   static void show(BuildContext context, Book book, String listName,
-      BookService bookService, String? listId) {
+      BookService bookService, String? listId,
+      {String? actualListId}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -33,6 +36,7 @@ class BookDetailsCard extends StatefulWidget {
           listName: listName,
           bookService: bookService,
           listId: listId,
+          actualListId: actualListId,
         );
       },
     );
@@ -199,21 +203,6 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                         ),
                       ),
                     ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          widget.book.title,
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                      ],
-                    ),
-                    if (widget.book.authors != null &&
-                        widget.book.authors!.isNotEmpty)
-                      Text(
-                        widget.book.authors!.join(', '),
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
                   ],
                 ),
               ),
@@ -380,6 +369,99 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                               _updateReadingStatus(context, value);
                             }
                           },
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(5, 0, 5, 10),
+                            child: ElevatedButton(
+                              onPressed: () async {
+                                final shouldDelete = await showDialog<bool>(
+                                  context: context,
+                                  builder: (BuildContext context) {
+                                    return AlertDialog(
+                                      title: const Text('Delete Book'),
+                                      content: Text(
+                                        'Are you sure you want to delete "${widget.book.title}" from ${widget.listName}?',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context, false),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context, true),
+                                          child: const Text(
+                                            'Delete',
+                                            style: TextStyle(color: Colors.red),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                );
+
+                                if (shouldDelete == true) {
+                                  try {
+                                    final user =
+                                        FirebaseAuth.instance.currentUser;
+                                    if (user == null) return;
+
+                                    await FirebaseFirestore.instance
+                                        .collection('users')
+                                        .doc(user.uid)
+                                        .collection('lists')
+                                        .doc(widget.actualListId ??
+                                            widget.listId)
+                                        .collection('books')
+                                        .doc(widget.book.isbn)
+                                        .delete();
+
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Book deleted from ${widget.listName}',
+                                          ),
+                                        ),
+                                      );
+                                      Navigator.pop(context);
+                                    }
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content:
+                                              Text('Error deleting book: $e'),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: const Text(
+                                'Delete Book',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),

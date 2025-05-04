@@ -1439,27 +1439,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _showBookDetails(Book book, {bool isScanned = false}) {
-    setState(() {
-      _isLoading = false;
-    });
-
     if (!mounted) return;
 
-    showModalBottomSheet(
+    // Find the book in _loadedBooks to get its actual list ID
+    final bookWithList = _loadedBooks.firstWhere(
+      (b) => b.book.isbn == book.isbn,
+      orElse: () => BookWithList(
+        book: book,
+        listId: _selectedListId ?? '',
+        listName: _selectedListName,
+      ),
+    );
+
+    showModalBottomSheet<Widget>(
       context: _buildContext,
       isScrollControlled: true,
-      builder: (BuildContext modalContext) => isScanned
-          ? ScanBookDetailsCard(
-              book: book,
-              bookService: BookService(modalContext),
-              lists: _listNamesCache,
-            )
-          : BookDetailsCard(
-              book: book,
-              listName: _selectedListName,
-              bookService: BookService(modalContext),
-              listId: _selectedListId,
-            ),
+      builder: (BuildContext modalContext) => BookDetailsCard(
+        book: book,
+        listName: bookWithList.listName,
+        bookService: BookService(modalContext),
+        listId: _selectedListId,
+        actualListId: bookWithList.listId,
+      ),
     );
   }
 

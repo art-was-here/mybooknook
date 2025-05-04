@@ -248,21 +248,6 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
                         ),
                       ),
                     ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          widget.book.title,
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                      ],
-                    ),
-                    if (widget.book.authors != null &&
-                        widget.book.authors!.isNotEmpty)
-                      Text(
-                        widget.book.authors!.join(', '),
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
                   ],
                 ),
               ),
@@ -297,6 +282,8 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
                                     widget.book.title,
                                     style:
                                         Theme.of(context).textTheme.titleLarge,
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 2,
                                   ),
                                   if (widget.book.authors != null &&
                                       widget.book.authors!.isNotEmpty)
