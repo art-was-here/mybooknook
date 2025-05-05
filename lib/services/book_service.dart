@@ -5,6 +5,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/books/v1.dart';
 import 'package:http/src/client.dart';
 import '../models/book.dart';
+import '../models/settings.dart' as app_settings;
 import 'auth_client.dart';
 
 class BookService {
@@ -313,6 +314,13 @@ class BookService {
         });
         print('Book deleted from $selectedListName: $bookTitle');
       }
+
+      // Update total books count
+      final settings = app_settings.Settings();
+      await settings.load();
+      await settings.updateBookCounts(
+          settings.totalBooks - 1, settings.readBooks);
+      await settings.save();
     } catch (e, stackTrace) {
       print('Error deleting book: $e');
       print('Stack trace: $stackTrace');
@@ -355,6 +363,14 @@ class BookService {
         print('Add book timed out');
         throw Exception('Add book timed out');
       });
+
+      // Update total books count
+      final settings = app_settings.Settings();
+      await settings.load();
+      await settings.updateBookCounts(
+          settings.totalBooks + 1, settings.readBooks);
+      await settings.save();
+
       print('Book added to list: ${book.title}');
     } catch (e, stackTrace) {
       print('Error adding book: $e');

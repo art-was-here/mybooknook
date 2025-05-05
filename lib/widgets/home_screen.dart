@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/book.dart';
+import '../models/settings.dart' as app_settings;
 import '../services/book_service.dart';
 import '../services/barcode_service.dart';
 import '../services/text_recognition_service.dart';
@@ -17,6 +18,7 @@ import 'home_screen/list_item.dart';
 import 'home_screen/list_manager.dart';
 import 'home_screen/book_with_list.dart';
 import 'scan_book_details_card.dart';
+import '../screens/settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
@@ -858,6 +860,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: () {
+                Navigator.pushNamed(context, '/settings');
+              },
+            ),
             GestureDetector(
               onTap: () {
                 Navigator.pushNamed(context, '/profile');
@@ -1246,6 +1254,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
       final querySnapshot = await query.get();
       print('Query completed: ${querySnapshot.docs.length} documents found');
+
+      // Update total books count
+      final settings = app_settings.Settings();
+      await settings.load();
+      await settings.updateBookCounts(
+          querySnapshot.docs.length, settings.readBooks);
+      await settings.save();
 
       // Clear the current books list
       _loadedBooks.clear();

@@ -1,3 +1,5 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
 class Book {
   final String title;
   final List<String>? authors;
@@ -9,7 +11,7 @@ class Book {
   final int? pageCount;
   final List<String>? categories;
   final List<String>? tags;
-  final bool isRead;
+  bool isRead;
   final int? currentPage;
   final DateTime? startedReading;
   final DateTime? finishedReading;
@@ -128,5 +130,11 @@ class Book {
   double get readingProgress {
     if (pageCount == null || currentPage == null) return 0.0;
     return (currentPage! / pageCount!) * 100;
+  }
+
+  static Future<bool> isBookCompleted(String isbn) async {
+    final prefs = await SharedPreferences.getInstance();
+    final completedBooks = prefs.getStringList('completed_books') ?? [];
+    return completedBooks.contains(isbn);
   }
 }

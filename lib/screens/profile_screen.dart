@@ -6,6 +6,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/settings.dart' as app_settings;
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -228,29 +229,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadBookStats() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final listsSnapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('lists')
-        .get();
-
-    int total = 0;
-    int read = 0;
-
-    for (var list in listsSnapshot.docs) {
-      final booksSnapshot = await list.reference.collection('books').get();
-      total += booksSnapshot.docs.length;
-      read += booksSnapshot.docs
-          .where((doc) => doc.data()['isRead'] == true)
-          .length;
-    }
+    final settings = app_settings.Settings();
+    await settings.load();
 
     setState(() {
-      _totalBooks = total;
-      _totalPages = read;
+      _totalBooks = settings.totalBooks;
+      _totalPages = settings.readBooks;
     });
   }
 
