@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/settings.dart' as app_settings;
+import 'dart:convert';
 
 class BookDetailsCard extends StatefulWidget {
   final Book book;
@@ -55,6 +56,8 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
   bool _isDescriptionExpanded = false;
   ScrollController? _scrollController;
   bool _canDismiss = false;
+  bool _isRead = false;
+  bool _isFavorite = false;
 
   @override
   void initState() {
@@ -63,6 +66,7 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
     _scrollController = ScrollController();
     _scrollController?.addListener(_handleScroll);
     _loadReadingStatus();
+    _loadFavoriteStatus();
   }
 
   @override
@@ -188,6 +192,45 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
     }
   }
 
+  Future<void> _loadFavoriteStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final favoriteBooksJson = prefs.getString('favoriteBooks') ?? '[]';
+    final List<dynamic> favoriteBooksList = jsonDecode(favoriteBooksJson);
+    final isFavorite =
+        favoriteBooksList.any((book) => book['isbn'] == widget.book.isbn);
+    if (mounted) {
+      setState(() {
+        _isFavorite = isFavorite;
+      });
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    final prefs = await SharedPreferences.getInstance();
+    final favoriteBooksJson = prefs.getString('favoriteBooks') ?? '[]';
+    final List<dynamic> favoriteBooksList = jsonDecode(favoriteBooksJson);
+
+    if (_isFavorite) {
+      // Remove from favorites
+      favoriteBooksList.removeWhere((book) => book['isbn'] == widget.book.isbn);
+    } else {
+      // Add to favorites
+      favoriteBooksList.add({
+        'title': widget.book.title,
+        'authors': widget.book.authors,
+        'imageUrl': widget.book.imageUrl,
+        'isbn': widget.book.isbn,
+      });
+    }
+
+    await prefs.setString('favoriteBooks', jsonEncode(favoriteBooksList));
+    if (mounted) {
+      setState(() {
+        _isFavorite = !_isFavorite;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
@@ -262,10 +305,17 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    widget.book.title,
-                                    style:
-                                        Theme.of(context).textTheme.titleLarge,
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        widget.book.title,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleLarge,
+                                      ),
+                                    ],
                                   ),
                                   if (widget.book.authors != null &&
                                       widget.book.authors!.isNotEmpty)
@@ -398,6 +448,17 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                               _updateReadingStatus(context, value);
                             }
                           },
+                        ),
+                        ListTile(
+                          title: const Text('Mark as favorite'),
+                          trailing: IconButton(
+                            icon: Icon(
+                              _isFavorite ? Icons.star : Icons.star_border,
+                              color: _isFavorite ? Colors.amber : null,
+                            ),
+                            onPressed: _toggleFavorite,
+                          ),
+                          onTap: _toggleFavorite,
                         ),
                         const SizedBox(height: 16),
                         SizedBox(

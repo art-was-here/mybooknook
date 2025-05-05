@@ -23,10 +23,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     'Fiction',
     'Non-Fiction',
     'Mystery',
-    'Science Fiction',
+    'Sci-Fi',
     'Fantasy',
     'Romance',
     'Thriller',
+    'Horror',
     'Biography',
     'History',
     'Poetry',
@@ -48,6 +49,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<String> _favoriteGenreTags = [];
   int _totalBooks = 0;
   int _totalPages = 0;
+  List<Map<String, dynamic>> _favoriteBooks = [];
 
   @override
   void initState() {
@@ -114,6 +116,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final favoriteAuthor = prefs.getString('favoriteAuthor') ?? '';
     final lastUpdated = prefs.getString('statsLastUpdated') ?? '';
 
+    // Load favorite books
+    final favoriteBooksJson = prefs.getString('favoriteBooks') ?? '[]';
+    final List<dynamic> favoriteBooksList = jsonDecode(favoriteBooksJson);
+    _favoriteBooks = favoriteBooksList
+        .map((book) => Map<String, dynamic>.from(book))
+        .toList();
+
     if (mounted) {
       setState(() {
         _totalBooks = totalBooks;
@@ -156,12 +165,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await prefs.setString('statsLastUpdated', _lastUpdated);
 
     // Save about me section
-    await prefs.setString(
-        'aboutMe', _bioController.text); // Save from controller
+    await prefs.setString('aboutMe', _bioController.text);
 
     // Save favorite genre tags
-    await prefs.setStringList(
-        'favoriteGenreTags', _selectedGenres); // Save from selected genres
+    await prefs.setStringList('favoriteGenreTags', _selectedGenres);
+
+    // Save favorite books
+    await prefs.setString('favoriteBooks', jsonEncode(_favoriteBooks));
 
     print('Profile data saved successfully');
   }
@@ -458,6 +468,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final percentage =
         _totalBooks > 0 ? (_totalPages / _totalBooks * 100).round() : 0;
 
+    // Calculate account age
+    final accountCreationTime = user?.metadata.creationTime;
+    final accountAge = accountCreationTime != null
+        ? DateTime.now().difference(accountCreationTime)
+        : const Duration();
+    final days = accountAge.inDays;
+    final hours = accountAge.inHours % 24;
+    final minutes = accountAge.inMinutes % 60;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
@@ -475,82 +494,205 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Stack(
-                  children: [
-                    _base64Image != null
-                        ? Container(
-                            width: 120,
-                            height: 120,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              image: DecorationImage(
-                                image: MemoryImage(base64Decode(_base64Image!)),
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          )
-                        : Container(
-                            width: 120,
-                            height: 120,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.grey[200],
-                            ),
-                            child: const Icon(
-                              Icons.person,
-                              size: 60,
-                              color: Colors.grey,
-                            ),
-                          ),
-                    if (_isEditing)
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary,
-                            shape: BoxShape.circle,
-                          ),
-                          child: IconButton(
-                            icon: const Icon(Icons.camera_alt,
-                                color: Colors.white),
-                            onPressed: _pickImage,
-                            padding: const EdgeInsets.all(8),
-                            constraints: const BoxConstraints(),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Center(
-                child: Text(
-                  user?.displayName ?? 'User',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Book Statistics',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  TextButton(
-                    onPressed: _toggleEditMode,
-                    child: Text(_isEditing ? 'Save' : 'Edit'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
+              // Profile Info Card
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Profile Photo
+                          Container(
+                            width: 96, // 20% smaller than original 120
+                            height: 96,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              image: _base64Image != null
+                                  ? DecorationImage(
+                                      image: MemoryImage(
+                                          base64Decode(_base64Image!)),
+                                      fit: BoxFit.cover,
+                                    )
+                                  : null,
+                              color: Colors.grey[200],
+                            ),
+                            child: _base64Image == null
+                                ? const Icon(
+                                    Icons.person,
+                                    size: 48,
+                                    color: Colors.grey,
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(width: 16),
+                          // Username and Account Age
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '@${user?.displayName ?? 'user'}',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleLarge
+                                      ?.copyWith(
+                                        fontSize: Theme.of(context)
+                                                .textTheme
+                                                .titleLarge!
+                                                .fontSize! *
+                                            0.9,
+                                      ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Account age: $days days, $hours hours, $minutes minutes',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      // About Me Section
+                      Text(
+                        'About Me',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _bioController,
+                        maxLines: 3,
+                        enabled: _isEditing,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                        decoration: InputDecoration(
+                          hintText: 'Write something about yourself...',
+                          hintStyle: Theme.of(context).textTheme.bodySmall,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Favorites Card
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Favorite Books',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 180,
+                        child: _favoriteBooks.isEmpty
+                            ? Center(
+                                child: Text(
+                                  'No favorite books yet',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              )
+                            : ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _favoriteBooks.length,
+                                padding: const EdgeInsets.only(bottom: 8),
+                                itemBuilder: (context, index) {
+                                  final book = _favoriteBooks[index];
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 16),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 120,
+                                          height: 145,
+                                          clipBehavior: Clip.antiAlias,
+                                          decoration: BoxDecoration(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            image: book['imageUrl'] != null
+                                                ? DecorationImage(
+                                                    image: NetworkImage(
+                                                        book['imageUrl']),
+                                                    fit: BoxFit.cover,
+                                                  )
+                                                : null,
+                                            color: Colors.grey[200],
+                                          ),
+                                          child: book['imageUrl'] == null
+                                              ? const Icon(
+                                                  Icons.book,
+                                                  size: 48,
+                                                  color: Colors.grey,
+                                                )
+                                              : null,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        SizedBox(
+                                          width: 120,
+                                          child: Tooltip(
+                                            message: book['title'] ??
+                                                'Unknown Title',
+                                            child: Text(
+                                              book['title'] ?? 'Unknown Title',
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodyMedium
+                                                  ?.copyWith(
+                                                    fontSize: Theme.of(context)
+                                                            .textTheme
+                                                            .bodyMedium!
+                                                            .fontSize! *
+                                                        0.85,
+                                                  ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              textAlign: TextAlign.center,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Book Statistics Card
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Book Statistics',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          TextButton(
+                            onPressed: _toggleEditMode,
+                            child: Text(_isEditing ? 'Save' : 'Edit'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
@@ -569,131 +711,140 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
-              Text(
-                'About Me',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _bioController,
-                maxLines: 3,
-                enabled: _isEditing,
-                style: Theme.of(context).textTheme.bodyMedium,
-                decoration: InputDecoration(
-                  hintText: 'Write something about yourself...',
-                  hintStyle: Theme.of(context).textTheme.bodySmall,
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Favorite Genres',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              if (_isEditing) ...[
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        decoration: InputDecoration(
-                          hintText: 'Add custom genre...',
-                          hintStyle: Theme.of(context).textTheme.bodySmall,
-                          border: const OutlineInputBorder(),
-                        ),
-                        onFieldSubmitted: (value) {
-                          if (value.trim().isNotEmpty &&
-                              !_availableGenres.contains(value.trim())) {
-                            setState(() {
-                              _availableGenres.add(value.trim());
-                              _selectedGenres.add(value.trim());
-                            });
-                          }
-                        },
+              const SizedBox(height: 16),
+              // Genres Card
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Favorite Genres',
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.add),
-                      onPressed: () {
-                        final controller = TextEditingController();
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: Text('Add Custom Genre',
-                                style: Theme.of(context).textTheme.titleMedium),
-                            content: TextField(
-                              controller: controller,
-                              decoration: InputDecoration(
-                                hintText: 'Enter genre name',
-                                hintStyle:
-                                    Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: Text('Cancel',
-                                    style:
-                                        Theme.of(context).textTheme.bodyMedium),
-                              ),
-                              TextButton(
-                                onPressed: () {
-                                  final genre = controller.text.trim();
-                                  if (genre.isNotEmpty &&
-                                      !_availableGenres.contains(genre)) {
+                      const SizedBox(height: 8),
+                      if (_isEditing) ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                decoration: InputDecoration(
+                                  hintText: 'Add custom genre...',
+                                  hintStyle:
+                                      Theme.of(context).textTheme.bodySmall,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                onFieldSubmitted: (value) {
+                                  if (value.trim().isNotEmpty &&
+                                      !_availableGenres
+                                          .contains(value.trim())) {
                                     setState(() {
-                                      _availableGenres.add(genre);
-                                      _selectedGenres.add(genre);
+                                      _availableGenres.add(value.trim());
+                                      _selectedGenres.add(value.trim());
                                     });
                                   }
-                                  Navigator.pop(context);
                                 },
-                                child: Text('Add',
-                                    style:
-                                        Theme.of(context).textTheme.bodyMedium),
                               ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ],
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.add),
+                              onPressed: () {
+                                final controller = TextEditingController();
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: Text('Add Custom Genre',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium),
+                                    content: TextField(
+                                      controller: controller,
+                                      decoration: InputDecoration(
+                                        hintText: 'Enter genre name',
+                                        hintStyle: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall,
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: Text('Cancel',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodyMedium),
+                                      ),
+                                      TextButton(
+                                        onPressed: () {
+                                          final genre = controller.text.trim();
+                                          if (genre.isNotEmpty &&
+                                              !_availableGenres
+                                                  .contains(genre)) {
+                                            setState(() {
+                                              _availableGenres.add(genre);
+                                              _selectedGenres.add(genre);
+                                            });
+                                          }
+                                          Navigator.pop(context);
+                                        },
+                                        child: Text('Add',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodyMedium),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _availableGenres.map((genre) {
+                          final isSelected = _selectedGenres.contains(genre);
+                          return FilterChip(
+                            label: Text(genre,
+                                style: Theme.of(context).textTheme.bodyMedium),
+                            selected: isSelected,
+                            onSelected: _isEditing
+                                ? (selected) {
+                                    setState(() {
+                                      if (selected) {
+                                        _selectedGenres.add(genre);
+                                      } else {
+                                        _selectedGenres.remove(genre);
+                                      }
+                                    });
+                                  }
+                                : null,
+                            deleteIcon: _isEditing
+                                ? const Icon(Icons.close, size: 18)
+                                : null,
+                            onDeleted: _isEditing
+                                ? () {
+                                    setState(() {
+                                      _availableGenres.remove(genre);
+                                      _selectedGenres.remove(genre);
+                                    });
+                                  }
+                                : null,
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 8),
-              ],
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _availableGenres.map((genre) {
-                  final isSelected = _selectedGenres.contains(genre);
-                  return FilterChip(
-                    label: Text(genre,
-                        style: Theme.of(context).textTheme.bodyMedium),
-                    selected: isSelected,
-                    onSelected: _isEditing
-                        ? (selected) {
-                            setState(() {
-                              if (selected) {
-                                _selectedGenres.add(genre);
-                              } else {
-                                _selectedGenres.remove(genre);
-                              }
-                            });
-                          }
-                        : null,
-                    deleteIcon:
-                        _isEditing ? const Icon(Icons.close, size: 18) : null,
-                    onDeleted: _isEditing
-                        ? () {
-                            setState(() {
-                              _availableGenres.remove(genre);
-                              _selectedGenres.remove(genre);
-                            });
-                          }
-                        : null,
-                  );
-                }).toList(),
               ),
             ],
           ),
