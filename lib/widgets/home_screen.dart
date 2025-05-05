@@ -883,14 +883,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   Navigator.pushNamed(context, '/settings');
                 }
               },
-              itemBuilder: (BuildContext context) => [
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
                 const PopupMenuItem<String>(
                   value: 'profile',
-                  child: Text('Profile'),
+                  child: Row(
+                    children: [
+                      Icon(Icons.person),
+                      SizedBox(width: 8),
+                      Text('Go to Profile'),
+                    ],
+                  ),
                 ),
                 const PopupMenuItem<String>(
                   value: 'settings',
-                  child: Text('Settings'),
+                  child: Row(
+                    children: [
+                      Icon(Icons.settings),
+                      SizedBox(width: 8),
+                      Text('Settings'),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -1540,23 +1552,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final cachedImage = prefs.getString('cachedProfileImage');
     final lastUpdate = prefs.getInt('lastImageUpdate');
 
-    if (cachedImage != null && lastUpdate != null) {
-      final lastUpdateTime = DateTime.fromMillisecondsSinceEpoch(lastUpdate);
-      final timeDifference =
-          DateTime.now().difference(lastUpdateTime).inMinutes;
-
-      if (timeDifference < 5) {
-        print('Using cached profile image');
-        if (mounted) {
-          setState(() {
-            _cachedProfileImage = cachedImage;
-            _isProfileImageLoading = false;
-          });
-        }
-        return;
+    if (cachedImage != null) {
+      print('Found cached profile image');
+      if (mounted) {
+        setState(() {
+          _cachedProfileImage = cachedImage;
+          _isProfileImageLoading = false;
+        });
       }
+      return;
     }
 
+    print('No cached profile image found');
     if (mounted) {
       setState(() {
         _isProfileImageLoading = false;
