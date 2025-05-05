@@ -860,34 +860,39 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.settings),
-              onPressed: () {
-                Navigator.pushNamed(context, '/settings');
+            PopupMenuButton<String>(
+              icon: _isProfileImageLoading
+                  ? const CircleAvatar(
+                      radius: 18,
+                      child: CircularProgressIndicator(),
+                    )
+                  : CircleAvatar(
+                      radius: 18,
+                      backgroundImage: _cachedProfileImage != null
+                          ? MemoryImage(base64Decode(_cachedProfileImage!))
+                              as ImageProvider
+                          : null,
+                      child: _cachedProfileImage == null
+                          ? const Icon(Icons.person)
+                          : null,
+                    ),
+              onSelected: (String value) {
+                if (value == 'profile') {
+                  Navigator.pushNamed(context, '/profile');
+                } else if (value == 'settings') {
+                  Navigator.pushNamed(context, '/settings');
+                }
               },
-            ),
-            GestureDetector(
-              onTap: () {
-                Navigator.pushNamed(context, '/profile');
-              },
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: _isProfileImageLoading
-                    ? const CircleAvatar(
-                        radius: 18,
-                        child: CircularProgressIndicator(),
-                      )
-                    : CircleAvatar(
-                        radius: 18,
-                        backgroundImage: _cachedProfileImage != null
-                            ? MemoryImage(base64Decode(_cachedProfileImage!))
-                                as ImageProvider
-                            : null,
-                        child: _cachedProfileImage == null
-                            ? const Icon(Icons.person)
-                            : null,
-                      ),
-              ),
+              itemBuilder: (BuildContext context) => [
+                const PopupMenuItem<String>(
+                  value: 'profile',
+                  child: Text('Profile'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'settings',
+                  child: Text('Settings'),
+                ),
+              ],
             ),
           ],
         ),
