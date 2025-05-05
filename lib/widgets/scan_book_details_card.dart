@@ -3,6 +3,8 @@ import '../models/book.dart';
 import '../services/book_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/settings.dart' as app_settings;
 
 class ScanBookDetailsCard extends StatefulWidget {
   final Book book;
@@ -33,6 +35,7 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
     super.initState();
     _scrollController = ScrollController();
     _scrollController?.addListener(_handleScroll);
+    _loadReadingStatus();
   }
 
   @override
@@ -165,24 +168,41 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
   }
 
   Future<void> _updateReadingStatus(BuildContext context, bool isRead) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
     try {
-      final bookRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('lists')
-          .doc(_selectedListId)
-          .collection('books')
-          .doc(widget.book.isbn);
+      final prefs = await SharedPreferences.getInstance();
+      final completedBooksKey = 'completed_books';
+      final completedBooks = prefs.getStringList(completedBooksKey) ?? [];
 
-      await bookRef.update({
-        'isRead': isRead,
-        'currentPage': isRead ? widget.book.pageCount : 0,
-        if (isRead) 'finishedReading': FieldValue.serverTimestamp(),
-        if (!isRead) 'finishedReading': null,
-      });
+      if (isRead) {
+        if (!completedBooks.contains(widget.book.isbn)) {
+          completedBooks.add(widget.book.isbn);
+          await prefs.setStringList(completedBooksKey, completedBooks);
+
+          // Update reading statistics
+          final settings = app_settings.Settings();
+          await settings.load();
+          await settings.incrementReadBooks();
+          await settings.save();
+        }
+      } else {
+        if (completedBooks.contains(widget.book.isbn)) {
+          completedBooks.remove(widget.book.isbn);
+          await prefs.setStringList(completedBooksKey, completedBooks);
+
+          // Update reading statistics
+          final settings = app_settings.Settings();
+          await settings.load();
+          await settings.decrementReadBooks();
+          await settings.save();
+        }
+      }
+
+      // Update the state immediately
+      if (mounted) {
+        setState(() {
+          widget.book.isRead = isRead;
+        });
+      }
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -202,6 +222,15 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
     setState(() {
       _userRating = rating;
     });
+  }
+
+  Future<void> _loadReadingStatus() async {
+    final isCompleted = await Book.isBookCompleted(widget.book.isbn);
+    if (mounted) {
+      setState(() {
+        widget.book.isRead = isCompleted;
+      });
+    }
   }
 
   @override
