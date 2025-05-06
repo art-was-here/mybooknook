@@ -19,7 +19,7 @@ See the releases page for the latest version. Currently only android is supporte
 - [ ] Friends list
   - [ ] Add/Delete Friends
   - [ ] Profiles per user
-  - [ ] Username's on sign up
+  - [x] Username's on sign up
 - [x] Create custom lists
   - [x] Expand/Collapse lists
   - [x] Updated book details styling
