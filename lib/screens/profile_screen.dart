@@ -135,12 +135,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final favoriteAuthor = prefs.getString('favoriteAuthor') ?? '';
     final lastUpdated = prefs.getString('statsLastUpdated') ?? '';
 
-    // Load favorite books
+    // Load favorite books and verify they exist in user's lists
     final favoriteBooksJson = prefs.getString('favoriteBooks') ?? '[]';
     final List<dynamic> favoriteBooksList = jsonDecode(favoriteBooksJson);
-    _favoriteBooks = favoriteBooksList
+    final List<Map<String, dynamic>> tempFavoriteBooks = favoriteBooksList
         .map((book) => Map<String, dynamic>.from(book))
         .toList();
+
+    print('Loaded ${tempFavoriteBooks.length} favorite books from cache');
+    print(
+        'Favorite book IDs: ${tempFavoriteBooks.map((b) => b['id']).toList()}');
+
+    // Get all books from user's lists
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final listsSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('lists')
+          .get();
+
+      print('Found ${listsSnapshot.docs.length} lists');
+
+      final Set<String> validBookIds = {};
+      for (var list in listsSnapshot.docs) {
+        final booksSnapshot = await list.reference.collection('books').get();
+        print('List ${list.id} has ${booksSnapshot.docs.length} books');
+        for (var book in booksSnapshot.docs) {
+          validBookIds.add(book.id);
+        }
+      }
+
+      print('Valid book IDs from lists: $validBookIds');
+
+      // Filter favorite books to only include those that exist in lists
+      _favoriteBooks = tempFavoriteBooks.where((book) {
+        final bool isValid = validBookIds.contains(book['id']);
+        if (!isValid) {
+          print('Removing book ${book['id']} as it\'s not in any list');
+        }
+        return isValid;
+      }).toList();
+
+      print('Final favorite books count: ${_favoriteBooks.length}');
+    } else {
+      _favoriteBooks = [];
+    }
 
     if (mounted) {
       setState(() {
