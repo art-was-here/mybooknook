@@ -888,7 +888,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       ],
                     ),
                   ),
-                  const PopupMenuDivider(),
+                  PopupMenuItem<String>(
+                    enabled: false,
+                    height: 0,
+                    padding: EdgeInsets.zero,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Divider(height: 1),
+                    ),
+                  ),
                   ..._buildListMenuItems(context),
                 ],
                 child: Row(
@@ -929,8 +937,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       Navigator.pushNamed(context, '/profile');
                     } else if (value == 'settings') {
                       Navigator.pushNamed(context, '/settings');
+                    } else if (value == 'logout') {
+                      _showLogoutDialog();
                     }
                   },
+                  constraints: BoxConstraints(
+                    minWidth: MediaQuery.of(context).size.width,
+                    maxWidth: MediaQuery.of(context).size.width,
+                  ),
+                  position: PopupMenuPosition.under,
+                  offset: const Offset(0, 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   itemBuilder: (BuildContext context) =>
                       <PopupMenuEntry<String>>[
                     const PopupMenuItem<String>(
@@ -950,6 +969,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           Icon(Icons.settings),
                           SizedBox(width: 8),
                           Text('Settings'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem<String>(
+                      enabled: false,
+                      height: 0,
+                      padding: EdgeInsets.zero,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        child: Divider(height: 1),
+                      ),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: 'logout',
+                      child: Row(
+                        children: [
+                          Icon(Icons.logout),
+                          SizedBox(width: 8),
+                          Text('Logout'),
                         ],
                       ),
                     ),
@@ -1434,7 +1472,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           title: Text('Home'),
         ),
       ),
-      const PopupMenuDivider(),
+      PopupMenuItem<String>(
+        enabled: false,
+        height: 0,
+        padding: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Divider(height: 1),
+        ),
+      ),
       PopupMenuItem<String>(
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseAuth.instance.currentUser != null
@@ -1652,5 +1698,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return false;
     }
     return true;
+  }
+
+  void _showLogoutDialog() {
+    showDialog(
+      context: _buildContext,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+              if (context.mounted) {
+                Navigator.pop(context);
+                Navigator.pushReplacementNamed(context, '/login');
+              }
+            },
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
   }
 }

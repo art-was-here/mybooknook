@@ -681,9 +681,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 case 'edit':
                   _toggleEditMode();
                   break;
-                case 'logout':
-                  _showLogoutDialog();
-                  break;
               }
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
@@ -697,17 +694,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(width: 8),
                     Text(_isEditing ? 'Save' : 'Edit'),
-                  ],
-                ),
-              ),
-              const PopupMenuDivider(),
-              const PopupMenuItem<String>(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout, size: 20),
-                    SizedBox(width: 8),
-                    Text('Logout'),
                   ],
                 ),
               ),
