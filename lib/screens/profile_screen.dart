@@ -111,13 +111,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
           needsUpdate = true;
         }
 
+        // Check username
+        final newUsername = data['username'] ?? '';
+        if (newUsername != _username) {
+          _username = newUsername;
+          needsUpdate = true;
+        }
+
+        // Check bio
+        final newBio = data['bio'] ?? '';
+        if (newBio != _aboutMe) {
+          _aboutMe = newBio;
+          _bioController.text = newBio;
+          needsUpdate = true;
+        }
+
         // Check other data
         final newTotalBooks = data['totalBooks'] ?? 0;
         final newTotalPages = data['totalPages'] ?? 0;
         final newFavoriteGenre = data['favoriteGenre'] ?? '';
         final newFavoriteAuthor = data['favoriteAuthor'] ?? '';
         final newLastUpdated = data['lastUpdated'] ?? '';
-        final newAboutMe = data['aboutMe'] ?? '';
         final newFavoriteGenreTags =
             List<String>.from(data['favoriteGenreTags'] ?? []);
 
@@ -144,7 +158,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             newFavoriteGenre != _favoriteGenre ||
             newFavoriteAuthor != _favoriteAuthor ||
             newLastUpdated != _lastUpdated ||
-            newAboutMe != _aboutMe ||
             !_areListsEqual(newFavoriteGenreTags, _favoriteGenreTags) ||
             !_areBookListsEqual(newFavoriteBooks, _favoriteBooks)) {
           setState(() {
@@ -153,7 +166,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _favoriteGenre = newFavoriteGenre;
             _favoriteAuthor = newFavoriteAuthor;
             _lastUpdated = newLastUpdated;
-            _aboutMe = newAboutMe;
             _favoriteGenreTags = newFavoriteGenreTags;
             _selectedGenres.clear();
             _selectedGenres.addAll(newFavoriteGenreTags);
@@ -193,10 +205,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadCachedData() async {
     print('Loading cached profile data');
     final prefs = await SharedPreferences.getInstance();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Use user-specific keys for caching
+    final userPrefix = 'user_${user.uid}_';
 
     // Load cached image
-    final cachedImage = prefs.getString('cachedProfileImage');
-    final lastUpdate = prefs.getInt('lastImageUpdate');
+    final cachedImage = prefs.getString('${userPrefix}cachedProfileImage');
+    final lastUpdate = prefs.getInt('${userPrefix}lastImageUpdate');
 
     if (cachedImage != null && lastUpdate != null) {
       print('Found cached image');
@@ -214,34 +231,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
       print('No cached image found');
     }
 
-    // Load book statistics
-    final totalBooks = prefs.getInt('totalBooks') ?? 0;
-    final totalPages = prefs.getInt('totalPages') ?? 0;
-    final favoriteGenre = prefs.getString('favoriteGenre') ?? '';
-    final favoriteAuthor = prefs.getString('favoriteAuthor') ?? '';
-    final lastUpdated = prefs.getString('statsLastUpdated') ?? '';
+    // Load book statistics with user-specific keys
+    final totalBooks = prefs.getInt('${userPrefix}totalBooks') ?? 0;
+    final totalPages = prefs.getInt('${userPrefix}totalPages') ?? 0;
+    final favoriteGenre = prefs.getString('${userPrefix}favoriteGenre') ?? '';
+    final favoriteAuthor = prefs.getString('${userPrefix}favoriteAuthor') ?? '';
+    final lastUpdated = prefs.getString('${userPrefix}statsLastUpdated') ?? '';
 
-    // Load favorite books from local cache
-    final favoriteBooksJson = prefs.getString('favoriteBooks') ?? '[]';
+    // Load favorite books from local cache with user-specific key
+    final favoriteBooksJson =
+        prefs.getString('${userPrefix}favoriteBooks') ?? '[]';
     final List<dynamic> favoriteBooksList = jsonDecode(favoriteBooksJson);
     _favoriteBooks = favoriteBooksList
         .map((book) => Map<String, dynamic>.from(book))
-        .where((book) =>
-            book['listId'] != null) // Only include books that are in a list
+        .where((book) => book['listId'] != null)
         .toList();
 
-    // Load username
-    final username = prefs.getString('username') ?? '';
+    // Load username with user-specific key
+    final username = prefs.getString('${userPrefix}username') ?? '';
 
-    // Load birthday
-    final birthdayStr = prefs.getString('birthday');
+    // Load birthday with user-specific key
+    final birthdayStr = prefs.getString('${userPrefix}birthday');
     final birthday = birthdayStr != null ? DateTime.parse(birthdayStr) : null;
 
-    // Load about me section
-    final aboutMe = prefs.getString('aboutMe') ?? '';
+    // Load about me section with user-specific key
+    final aboutMe = prefs.getString('${userPrefix}bio') ?? '';
 
-    // Load favorite genre tags
-    final genreTags = prefs.getStringList('favoriteGenreTags') ?? [];
+    // Load favorite genre tags with user-specific key
+    final genreTags =
+        prefs.getStringList('${userPrefix}favoriteGenreTags') ?? [];
 
     if (mounted) {
       setState(() {
@@ -264,36 +282,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _saveProfileData() async {
     print('Saving profile data to local storage');
     final prefs = await SharedPreferences.getInstance();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-    // Save book statistics
-    await prefs.setInt('totalBooks', _totalBooks);
-    await prefs.setInt('totalPages', _totalPages);
-    await prefs.setString('favoriteGenre', _favoriteGenre);
-    await prefs.setString('favoriteAuthor', _favoriteAuthor);
-    await prefs.setString('statsLastUpdated', _lastUpdated);
+    // Use user-specific keys for caching
+    final userPrefix = 'user_${user.uid}_';
 
-    // Save about me section
-    await prefs.setString('aboutMe', _bioController.text);
+    // Save book statistics with user-specific keys
+    await prefs.setInt('${userPrefix}totalBooks', _totalBooks);
+    await prefs.setInt('${userPrefix}totalPages', _totalPages);
+    await prefs.setString('${userPrefix}favoriteGenre', _favoriteGenre);
+    await prefs.setString('${userPrefix}favoriteAuthor', _favoriteAuthor);
+    await prefs.setString('${userPrefix}statsLastUpdated', _lastUpdated);
 
-    // Save favorite genre tags
-    await prefs.setStringList('favoriteGenreTags', _selectedGenres);
+    // Save about me section with user-specific key
+    await prefs.setString('${userPrefix}bio', _bioController.text);
 
-    // Save favorite books
-    await prefs.setString('favoriteBooks', jsonEncode(_favoriteBooks));
+    // Save favorite genre tags with user-specific key
+    await prefs.setStringList(
+        '${userPrefix}favoriteGenreTags', _selectedGenres);
 
-    // Save username
-    await prefs.setString('username', _username);
+    // Save favorite books with user-specific key
+    await prefs.setString(
+        '${userPrefix}favoriteBooks', jsonEncode(_favoriteBooks));
 
-    // Save birthday
+    // Save username with user-specific key
+    await prefs.setString('${userPrefix}username', _username);
+
+    // Save birthday with user-specific key
     if (_birthday != null) {
-      await prefs.setString('birthday', _birthday!.toIso8601String());
+      await prefs.setString(
+          '${userPrefix}birthday', _birthday!.toIso8601String());
     }
 
-    // Save profile image
+    // Save profile image with user-specific key
     if (_base64Image != null) {
-      await prefs.setString('cachedProfileImage', _base64Image!);
-      await prefs.setInt(
-          'lastImageUpdate', DateTime.now().millisecondsSinceEpoch);
+      await prefs.setString('${userPrefix}cachedProfileImage', _base64Image!);
+      await prefs.setInt('${userPrefix}lastImageUpdate',
+          DateTime.now().millisecondsSinceEpoch);
     }
 
     print('Profile data saved successfully');
@@ -335,7 +361,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _favoriteGenre = data['favoriteGenre'] ?? '';
             _favoriteAuthor = data['favoriteAuthor'] ?? '';
             _lastUpdated = data['lastUpdated'] ?? '';
-            _aboutMe = data['aboutMe'] ?? '';
+            _aboutMe = data['bio'] ?? '';
             _favoriteGenreTags =
                 List<String>.from(data['favoriteGenreTags'] ?? []);
           });
@@ -529,6 +555,96 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
+  Future<void> _deleteAccount() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      // Show confirmation dialog
+      final shouldDelete = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Account'),
+          content: const Text(
+              'Are you sure you want to delete your account? This action cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldDelete != true) return;
+
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Deleting account...')),
+        );
+      }
+
+      // Delete user data from Firestore
+      final batch = FirebaseFirestore.instance.batch();
+
+      // Delete user document
+      batch
+          .delete(FirebaseFirestore.instance.collection('users').doc(user.uid));
+
+      // Delete user's books
+      final booksSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('books')
+          .get();
+      for (var doc in booksSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Delete user's lists
+      final listsSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('lists')
+          .get();
+      for (var doc in listsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Commit the batch
+      await batch.commit();
+
+      // Clear local storage for this user
+      final prefs = await SharedPreferences.getInstance();
+      final userPrefix = 'user_${user.uid}_';
+      final keys = prefs.getKeys();
+      for (var key in keys) {
+        if (key.startsWith(userPrefix)) {
+          await prefs.remove(key);
+        }
+      }
+
+      // Delete the user account
+      await user.delete();
+
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/login');
+      }
+    } catch (e) {
+      print('Error deleting account: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting account: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     print(
@@ -631,10 +747,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           hintText: 'Write something about yourself...',
                           hintStyle: Theme.of(context).textTheme.bodySmall,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(16),
                           ),
                         ),
                       ),
+                      const SizedBox(height: 5),
                     ],
                   ),
                 ),
@@ -925,14 +1042,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Profile Photo
-        CircleAvatar(
-          radius: 45,
-          backgroundImage: _base64Image != null
-              ? MemoryImage(base64Decode(_base64Image!))
-              : null,
-          child:
-              _base64Image == null ? const Icon(Icons.person, size: 45) : null,
+        // Profile Photo with Edit Button
+        Stack(
+          children: [
+            CircleAvatar(
+              radius: 45,
+              backgroundImage: _base64Image != null
+                  ? MemoryImage(base64Decode(_base64Image!))
+                  : null,
+              child: _base64Image == null
+                  ? const Icon(Icons.person, size: 45)
+                  : null,
+            ),
+            if (_isEditing)
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.camera_alt, color: Colors.white),
+                    onPressed: _pickImage,
+                    tooltip: 'Change profile photo',
+                  ),
+                ),
+              ),
+          ],
         ),
         const SizedBox(width: 16),
         // Username and Account Age

@@ -1126,10 +1126,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               }
 
                               return ListView.builder(
-                                itemCount: displayItems.length,
+                                itemCount: displayItems.length + 1,
                                 itemBuilder:
                                     (BuildContext listContext, int index) {
-                                  final item = displayItems[index];
+                                  if (index == 0) {
+                                    return const SizedBox(height: 15);
+                                  }
+                                  final item = displayItems[index - 1];
                                   if (item is String) {
                                     final listName = item;
                                     final bookCount =
@@ -1608,8 +1611,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _loadCachedProfileImage() async {
     print('Loading cached profile image');
     final prefs = await SharedPreferences.getInstance();
-    final cachedImage = prefs.getString('cachedProfileImage');
-    final lastUpdate = prefs.getInt('lastImageUpdate');
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Use user-specific key for caching
+    final userPrefix = 'user_${user.uid}_';
+    final cachedImage = prefs.getString('${userPrefix}cachedProfileImage');
+    final lastUpdate = prefs.getInt('${userPrefix}lastImageUpdate');
 
     if (cachedImage != null) {
       print('Found cached profile image');

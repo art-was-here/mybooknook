@@ -1,39 +1,53 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if user owns the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Allow creating and reading user documents
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId);
+    }
+    
+    // Allow access to user's subcollections
     match /users/{userId}/{document=**} {
-      allow read, write, delete: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isOwner(userId);
     }
+    
+    // Allow access to lists and their books
+    match /users/{userId}/lists/{listId} {
+      allow read, write: if isOwner(userId);
+      
+      match /books/{bookId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+    
+    // Allow access to cached books
     match /users/{userId}/cachedBooks/{bookId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isOwner(userId);
     }
+    
+    // Allow access to books
     match /{path=**}/books/{bookId} {
       allow read: if request.auth != null && (
-        // Allow reading books from the user's own lists
         path.matches('users/' + request.auth.uid + '/.*') ||
-        // Allow reading books where the user is the owner (for collection group queries)
         resource.data.userId == request.auth.uid
       );
       allow write: if request.auth != null && (
-        // Allow writing to books in user's own lists
         path.matches('users/' + request.auth.uid + '/.*') ||
-        // Allow updating books where user is the owner
         request.resource.data.userId == request.auth.uid
       );
-    }
-    match /users/{userId}/lists/{listId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      
-      match /books/{bookId} {
-        allow read: if request.auth != null && (
-          userId == request.auth.uid ||
-          resource.data.userId == request.auth.uid
-        );
-        allow write: if request.auth != null && (
-          userId == request.auth.uid &&
-          request.resource.data.userId == request.auth.uid
-        );
-      }
     }
   }
 }

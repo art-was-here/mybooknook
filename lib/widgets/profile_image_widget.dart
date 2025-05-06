@@ -29,7 +29,12 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
 
   Future<void> _loadCachedProfileImage() async {
     final prefs = await SharedPreferences.getInstance();
-    final cachedImage = prefs.getString('profile_image');
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Use user-specific key for caching
+    final userPrefix = 'user_${user.uid}_';
+    final cachedImage = prefs.getString('${userPrefix}profile_image');
 
     if (cachedImage != null) {
       setState(() {
@@ -55,7 +60,8 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
         final imageUrl = userDoc.data()?['profileImage'] as String?;
         if (imageUrl != null) {
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('profile_image', imageUrl);
+          final userPrefix = 'user_${user.uid}_';
+          await prefs.setString('${userPrefix}profile_image', imageUrl);
 
           if (mounted) {
             setState(() {

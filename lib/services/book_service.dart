@@ -47,10 +47,19 @@ class BookService {
       if (e.toString().contains('403') ||
           e.toString().contains('access_denied')) {
         errorMessage =
-            'Access blocked: myBookNook is not verified with Google. Contact the developer to add you as a tester or wait for verification.';
+            'The app is currently in testing mode. Please contact the developer to be added as a test user.';
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMessage)),
+        SnackBar(
+          content: Text(errorMessage),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'OK',
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            },
+          ),
+        ),
       );
       return null;
     }
@@ -164,25 +173,26 @@ class BookService {
           publishedDate: bookData.publishedDate,
           pageCount: bookData.pageCount,
         );
-      }).toList()
-        ..sort((a, b) {
-          // First try to sort by number of ratings (popularity)
-          final aRatingsCount = a.ratingsCount ?? 0;
-          final bRatingsCount = b.ratingsCount ?? 0;
-          if (aRatingsCount != bRatingsCount) {
-            return bRatingsCount.compareTo(aRatingsCount);
-          }
+      }).toList();
 
-          // If ratings counts are equal, sort by average rating
-          final aRating = a.averageRating ?? 0;
-          final bRating = b.averageRating ?? 0;
-          if (aRating != bRating) {
-            return bRating.compareTo(aRating);
-          }
+      results.sort((a, b) {
+        // First try to sort by number of ratings (popularity)
+        final aRatingsCount = a.ratingsCount ?? 0;
+        final bRatingsCount = b.ratingsCount ?? 0;
+        if (aRatingsCount != bRatingsCount) {
+          return bRatingsCount.compareTo(aRatingsCount);
+        }
 
-          // If both ratings are equal, sort by title
-          return a.title.compareTo(b.title);
-        });
+        // If ratings counts are equal, sort by average rating
+        final aRating = a.averageRating ?? 0;
+        final bRating = b.averageRating ?? 0;
+        if (aRating != bRating) {
+          return bRating.compareTo(aRating);
+        }
+
+        // If both ratings are equal, sort by title
+        return a.title.compareTo(b.title);
+      });
 
       return results;
     } catch (e, stackTrace) {
@@ -190,8 +200,23 @@ class BookService {
       print('Stack trace: $stackTrace');
       // Only show snackbar if the widget is still mounted
       if (context.mounted) {
+        String errorMessage = 'Error searching books: $e';
+        if (e.toString().contains('403') ||
+            e.toString().contains('access_denied')) {
+          errorMessage =
+              'The app is currently in testing mode. Please contact the developer to be added as a test user.';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error searching books: $e')),
+          SnackBar(
+            content: Text(errorMessage),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OK',
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ),
+          ),
         );
       }
       return [];
