@@ -13,6 +13,7 @@ import 'screens/username_setup_screen.dart';
 import 'models/book.dart';
 import 'widgets/scan_book_details_card.dart';
 import 'services/book_service.dart';
+import 'screens/search_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -315,6 +316,7 @@ class _MyAppState extends State<MyApp> {
               accentColor: _accentColor,
             ),
         '/profile': (context) => const ProfileScreen(),
+        '/search': (context) => const SearchScreen(),
       },
     );
   }

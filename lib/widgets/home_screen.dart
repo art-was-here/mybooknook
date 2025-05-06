@@ -26,6 +26,7 @@ import 'home_screen/list_item.dart';
 import 'home_screen/list_manager.dart';
 import 'home_screen/book_with_list.dart';
 import '../screens/settings_screen.dart';
+import '../screens/search_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
@@ -916,6 +917,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
               actions: [
+                IconButton(
+                  icon: const Icon(Icons.search),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const SearchScreen(),
+                      ),
+                    );
+                  },
+                ),
                 PopupMenuButton<String>(
                   icon: _isProfileImageLoading
                       ? const CircleAvatar(
