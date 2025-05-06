@@ -36,6 +36,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedAccentColor = widget.accentColor;
     _loadSettings();
   }
 
@@ -72,14 +73,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
-    final settings = app_settings.Settings();
-    await settings.load();
-    if (mounted) {
-      setState(() {
-        _themeMode = settings.themeMode;
-        _accentColor = settings.accentColor;
-        _sortOrder = settings.sortOrder;
-      });
+    try {
+      _settings = app_settings.Settings();
+      await _settings.load();
+      if (mounted) {
+        setState(() {
+          _themeMode = _settings.themeMode;
+          _accentColor = _settings.accentColor;
+          _selectedAccentColor = _settings.accentColor;
+          _sortOrder = _settings.sortOrder;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Error loading settings: $e';
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -189,6 +201,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         title: const Text('Settings'),
         backgroundColor: _accentColor,
+        foregroundColor: Colors.white,
       ),
       body: MediaQuery(
         data: MediaQuery.of(context).copyWith(textScaleFactor: 0.85),
@@ -221,6 +234,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: const Text('Follow System Dark Mode'),
                       trailing: Switch(
                         value: _themeMode == ThemeMode.system,
+                        activeColor: _accentColor,
                         onChanged: (value) {
                           setState(() {
                             _themeMode =
@@ -234,6 +248,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: const Text('Dark Mode (Manual)'),
                       trailing: Switch(
                         value: _themeMode == ThemeMode.dark,
+                        activeColor: _accentColor,
                         onChanged: _themeMode == ThemeMode.system
                             ? null
                             : (value) {
@@ -250,9 +265,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       trailing: ColorPickerButton(
                         initialColor: _selectedAccentColor,
                         onColorSelected: (color) {
-                          setState(() {
-                            _selectedAccentColor = color;
-                          });
                           _saveAccentColor(color);
                         },
                       ),
@@ -428,10 +440,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveAccentColor(Color color) async {
-    final settings = app_settings.Settings();
-    await settings.load();
-    await settings.updateAccentColor(color);
-    widget.onAccentColorChanged(color);
+    try {
+      await _settings.updateAccentColor(color);
+      if (mounted) {
+        setState(() {
+          _accentColor = color;
+          _selectedAccentColor = color;
+        });
+        widget.onAccentColorChanged(color);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving accent color: $e')),
+        );
+      }
+    }
   }
 }
 
