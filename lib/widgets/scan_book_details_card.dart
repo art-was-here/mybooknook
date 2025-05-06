@@ -251,28 +251,73 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
   }
 
   Future<void> _toggleFavorite() async {
-    final prefs = await SharedPreferences.getInstance();
-    final favoriteBooksJson = prefs.getString('favoriteBooks') ?? '[]';
-    final List<dynamic> favoriteBooksList = jsonDecode(favoriteBooksJson);
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-    if (_isFavorite) {
-      // Remove from favorites
-      favoriteBooksList.removeWhere((book) => book['isbn'] == widget.book.isbn);
-    } else {
-      // Add to favorites
-      favoriteBooksList.add({
-        'title': widget.book.title,
-        'authors': widget.book.authors,
-        'imageUrl': widget.book.imageUrl,
-        'isbn': widget.book.isbn,
-      });
-    }
+    try {
+      // Update Firebase
+      final bookRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('books')
+          .doc(widget.book.isbn);
 
-    await prefs.setString('favoriteBooks', jsonEncode(favoriteBooksList));
-    if (mounted) {
-      setState(() {
-        _isFavorite = !_isFavorite;
-      });
+      if (_isFavorite) {
+        // Remove from favorites in Firebase
+        await bookRef.update({
+          'isFavorite': false,
+        });
+      } else {
+        // Add to favorites in Firebase
+        await bookRef.set({
+          ...widget.book.toMap(),
+          'isFavorite': true,
+          'listId': _selectedListId,
+        }, SetOptions(merge: true));
+      }
+
+      // Update SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final favoriteBooksJson = prefs.getString('favoriteBooks') ?? '[]';
+      final List<dynamic> favoriteBooksList = jsonDecode(favoriteBooksJson);
+
+      if (_isFavorite) {
+        // Remove from favorites
+        favoriteBooksList
+            .removeWhere((book) => book['isbn'] == widget.book.isbn);
+      } else {
+        // Add to favorites
+        favoriteBooksList.add({
+          'title': widget.book.title,
+          'authors': widget.book.authors,
+          'imageUrl': widget.book.imageUrl,
+          'isbn': widget.book.isbn,
+          'listId': _selectedListId,
+        });
+      }
+
+      await prefs.setString('favoriteBooks', jsonEncode(favoriteBooksList));
+
+      if (mounted) {
+        setState(() {
+          _isFavorite = !_isFavorite;
+        });
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                _isFavorite ? 'Removed from favorites' : 'Added to favorites'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating favorite status: $e')),
+        );
+      }
     }
   }
 

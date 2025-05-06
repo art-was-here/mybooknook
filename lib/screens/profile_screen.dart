@@ -58,10 +58,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     print('initState: Starting profile load');
-    _initializeData().then((_) {
-      // Show debug popup after initialization
-      _showDebugPopup();
-    });
+    _initializeData();
   }
 
   @override
@@ -124,13 +121,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final newFavoriteGenreTags =
             List<String>.from(data['favoriteGenreTags'] ?? []);
 
+        // Load favorite books from Firebase
+        final booksSnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('books')
+            .where('isFavorite', isEqualTo: true)
+            .get();
+
+        final newFavoriteBooks = booksSnapshot.docs
+            .map((doc) => {
+                  ...doc.data(),
+                  'id': doc.id,
+                })
+            .where((book) =>
+                book['listId'] != null) // Filter books that are in a list
+            .toList();
+
+        // Compare with local data and update if needed
         if (newTotalBooks != _totalBooks ||
             newTotalPages != _totalPages ||
             newFavoriteGenre != _favoriteGenre ||
             newFavoriteAuthor != _favoriteAuthor ||
             newLastUpdated != _lastUpdated ||
             newAboutMe != _aboutMe ||
-            !_areListsEqual(newFavoriteGenreTags, _favoriteGenreTags)) {
+            !_areListsEqual(newFavoriteGenreTags, _favoriteGenreTags) ||
+            !_areBookListsEqual(newFavoriteBooks, _favoriteBooks)) {
           setState(() {
             _totalBooks = newTotalBooks;
             _totalPages = newTotalPages;
@@ -141,6 +157,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _favoriteGenreTags = newFavoriteGenreTags;
             _selectedGenres.clear();
             _selectedGenres.addAll(newFavoriteGenreTags);
+            _favoriteBooks = newFavoriteBooks;
           });
 
           needsUpdate = true;
@@ -164,12 +181,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return true;
   }
 
+  bool _areBookListsEqual(
+      List<Map<String, dynamic>> list1, List<Map<String, dynamic>> list2) {
+    if (list1.length != list2.length) return false;
+    for (int i = 0; i < list1.length; i++) {
+      if (list1[i]['id'] != list2[i]['id']) return false;
+    }
+    return true;
+  }
+
   Future<void> _loadCachedData() async {
     print('Loading cached profile data');
     final prefs = await SharedPreferences.getInstance();
 
     // Load cached image
-    final cachedImage = prefs.getString('profileImage');
+    final cachedImage = prefs.getString('cachedProfileImage');
     final lastUpdate = prefs.getInt('lastImageUpdate');
 
     if (cachedImage != null && lastUpdate != null) {
@@ -195,11 +221,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final favoriteAuthor = prefs.getString('favoriteAuthor') ?? '';
     final lastUpdated = prefs.getString('statsLastUpdated') ?? '';
 
-    // Load favorite books
+    // Load favorite books from local cache
     final favoriteBooksJson = prefs.getString('favoriteBooks') ?? '[]';
     final List<dynamic> favoriteBooksList = jsonDecode(favoriteBooksJson);
     _favoriteBooks = favoriteBooksList
         .map((book) => Map<String, dynamic>.from(book))
+        .where((book) =>
+            book['listId'] != null) // Only include books that are in a list
         .toList();
 
     // Load username
@@ -263,7 +291,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     // Save profile image
     if (_base64Image != null) {
-      await prefs.setString('profileImage', _base64Image!);
+      await prefs.setString('cachedProfileImage', _base64Image!);
       await prefs.setInt(
           'lastImageUpdate', DateTime.now().millisecondsSinceEpoch);
     }
@@ -491,63 +519,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Future<void> _showDebugPopup() async {
-    if (!mounted) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    final cachedImage = prefs.getString('cachedProfileImage');
-    final lastUpdate = prefs.getInt('lastImageUpdate');
-    final lastUpdateTime = lastUpdate != null
-        ? DateTime.fromMillisecondsSinceEpoch(lastUpdate)
-        : null;
-    final timeDifference = lastUpdateTime != null
-        ? DateTime.now().difference(lastUpdateTime).inMinutes
-        : null;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Debug Info'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Cached Image Exists: ${cachedImage != null}'),
-              if (lastUpdateTime != null) ...[
-                Text('Last Update: $lastUpdateTime'),
-                Text('Age: $timeDifference minutes'),
-                Text('Image Length: ${cachedImage?.length ?? 0} bytes'),
-              ],
-              if (cachedImage != null) ...[
-                const SizedBox(height: 16),
-                const Text('Cached Image Preview:'),
-                const SizedBox(height: 8),
-                Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    image: DecorationImage(
-                      image: MemoryImage(base64Decode(cachedImage)),
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _toggleEditMode() {
     setState(() {
       _isEditing = !_isEditing;
@@ -595,7 +566,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 16.0),
+        padding: const EdgeInsets.symmetric(horizontal: 0.0, vertical: 16.0),
         child: Form(
           key: _formKey,
           child: Column(
@@ -603,6 +574,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               // Profile Info Card
               Card(
+                margin: const EdgeInsets.symmetric(horizontal: 10.0),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                   child: Column(
@@ -636,6 +608,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 16),
               // Favorites Card
               Card(
+                margin: const EdgeInsets.symmetric(horizontal: 10.0),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                   child: Column(
@@ -727,6 +700,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 16),
               // Book Statistics Card
               Card(
+                margin: const EdgeInsets.symmetric(horizontal: 10.0),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                   child: Column(
@@ -767,135 +741,142 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 16),
               // Genres Card
               Card(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Favorite Genres',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      if (_isEditing) ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextFormField(
-                                decoration: InputDecoration(
-                                  hintText: 'Add custom genre...',
-                                  hintStyle:
-                                      Theme.of(context).textTheme.bodySmall,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                onFieldSubmitted: (value) {
-                                  if (value.trim().isNotEmpty &&
-                                      !_availableGenres
-                                          .contains(value.trim())) {
-                                    setState(() {
-                                      _availableGenres.add(value.trim());
-                                      _selectedGenres.add(value.trim());
-                                    });
-                                  }
-                                },
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.add),
-                              onPressed: () {
-                                final controller = TextEditingController();
-                                showDialog(
-                                  context: context,
-                                  builder: (context) => AlertDialog(
-                                    title: Text('Add Custom Genre',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleMedium),
-                                    content: TextField(
-                                      controller: controller,
-                                      decoration: InputDecoration(
-                                        hintText: 'Enter genre name',
-                                        hintStyle: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall,
-                                        border: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                      ),
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(context),
-                                        child: Text('Cancel',
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodyMedium),
-                                      ),
-                                      TextButton(
-                                        onPressed: () {
-                                          final genre = controller.text.trim();
-                                          if (genre.isNotEmpty &&
-                                              !_availableGenres
-                                                  .contains(genre)) {
-                                            setState(() {
-                                              _availableGenres.add(genre);
-                                              _selectedGenres.add(genre);
-                                            });
-                                          }
-                                          Navigator.pop(context);
-                                        },
-                                        child: Text('Add',
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodyMedium),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
+                margin: const EdgeInsets.symmetric(horizontal: 10.0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Favorite Genres',
+                          style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 8),
-                      ],
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: _availableGenres.map((genre) {
-                          final isSelected = _selectedGenres.contains(genre);
-                          return FilterChip(
-                            label: Text(genre,
-                                style: Theme.of(context).textTheme.bodyMedium),
-                            selected: isSelected,
-                            onSelected: _isEditing
-                                ? (selected) {
-                                    setState(() {
-                                      if (selected) {
-                                        _selectedGenres.add(genre);
-                                      } else {
+                        if (_isEditing) ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  decoration: InputDecoration(
+                                    hintText: 'Add custom genre...',
+                                    hintStyle:
+                                        Theme.of(context).textTheme.bodySmall,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  onFieldSubmitted: (value) {
+                                    if (value.trim().isNotEmpty &&
+                                        !_availableGenres
+                                            .contains(value.trim())) {
+                                      setState(() {
+                                        _availableGenres.add(value.trim());
+                                        _selectedGenres.add(value.trim());
+                                      });
+                                    }
+                                  },
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add),
+                                onPressed: () {
+                                  final controller = TextEditingController();
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      title: Text('Add Custom Genre',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium),
+                                      content: TextField(
+                                        controller: controller,
+                                        decoration: InputDecoration(
+                                          hintText: 'Enter genre name',
+                                          hintStyle: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall,
+                                          border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                        ),
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context),
+                                          child: Text('Cancel',
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodyMedium),
+                                        ),
+                                        TextButton(
+                                          onPressed: () {
+                                            final genre =
+                                                controller.text.trim();
+                                            if (genre.isNotEmpty &&
+                                                !_availableGenres
+                                                    .contains(genre)) {
+                                              setState(() {
+                                                _availableGenres.add(genre);
+                                                _selectedGenres.add(genre);
+                                              });
+                                            }
+                                            Navigator.pop(context);
+                                          },
+                                          child: Text('Add',
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodyMedium),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _availableGenres.map((genre) {
+                            final isSelected = _selectedGenres.contains(genre);
+                            return FilterChip(
+                              label: Text(genre,
+                                  style:
+                                      Theme.of(context).textTheme.bodyMedium),
+                              selected: isSelected,
+                              onSelected: _isEditing
+                                  ? (selected) {
+                                      setState(() {
+                                        if (selected) {
+                                          _selectedGenres.add(genre);
+                                        } else {
+                                          _selectedGenres.remove(genre);
+                                        }
+                                      });
+                                    }
+                                  : null,
+                              deleteIcon: _isEditing
+                                  ? const Icon(Icons.close, size: 18)
+                                  : null,
+                              onDeleted: _isEditing
+                                  ? () {
+                                      setState(() {
+                                        _availableGenres.remove(genre);
                                         _selectedGenres.remove(genre);
-                                      }
-                                    });
-                                  }
-                                : null,
-                            deleteIcon: _isEditing
-                                ? const Icon(Icons.close, size: 18)
-                                : null,
-                            onDeleted: _isEditing
-                                ? () {
-                                    setState(() {
-                                      _availableGenres.remove(genre);
-                                      _selectedGenres.remove(genre);
-                                    });
-                                  }
-                                : null,
-                          );
-                        }).toList(),
-                      ),
-                    ],
+                                      });
+                                    }
+                                  : null,
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
