@@ -1,4 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Settings {
   static const String _fontSizeKey = 'font_size';
@@ -7,6 +10,9 @@ class Settings {
   static const String _lastImportDateKey = 'last_import_date';
   static const String _totalBooksKey = 'total_books';
   static const String _readBooksKey = 'read_books';
+  static const String _themeModeKey = 'theme_mode';
+  static const String _accentColorKey = 'accent_color';
+  static const String _sortOrderKey = 'sort_order';
 
   double _fontSize = 1.0;
   String _listDensity = 'comfortable';
@@ -14,6 +20,9 @@ class Settings {
   DateTime? _lastImportDate;
   int _totalBooks = 0;
   int _readBooks = 0;
+  ThemeMode _themeMode = ThemeMode.system;
+  Color _accentColor = Colors.teal;
+  String _sortOrder = 'title';
 
   // Getters
   double get fontSize => _fontSize;
@@ -22,6 +31,9 @@ class Settings {
   DateTime? get lastImportDate => _lastImportDate;
   int get totalBooks => _totalBooks;
   int get readBooks => _readBooks;
+  ThemeMode get themeMode => _themeMode;
+  Color get accentColor => _accentColor;
+  String get sortOrder => _sortOrder;
   double get readingProgress =>
       _totalBooks > 0 ? (_readBooks / _totalBooks) * 100 : 0;
 
@@ -39,6 +51,14 @@ class Settings {
         : null;
     _totalBooks = prefs.getInt(_totalBooksKey) ?? 0;
     _readBooks = prefs.getInt(_readBooksKey) ?? 0;
+    _themeMode = ThemeMode.values.firstWhere(
+      (mode) =>
+          mode.toString() ==
+          'ThemeMode.${prefs.getString(_themeModeKey) ?? 'system'}',
+      orElse: () => ThemeMode.system,
+    );
+    _accentColor = Color(prefs.getInt(_accentColorKey) ?? Colors.teal.value);
+    _sortOrder = prefs.getString(_sortOrderKey) ?? 'title';
   }
 
   // Save settings to SharedPreferences
@@ -57,17 +77,104 @@ class Settings {
     }
     await prefs.setInt(_totalBooksKey, _totalBooks);
     await prefs.setInt(_readBooksKey, _readBooks);
+    await prefs.setString(_themeModeKey, _themeMode.toString().split('.').last);
+    await prefs.setInt(_accentColorKey, _accentColor.value);
+    await prefs.setString(_sortOrderKey, _sortOrder);
   }
 
-  // Update methods
+  Future<void> initialize() async {
+    // Load from local storage first
+    await load();
+
+    // Then sync with Firebase if needed
+    await _syncWithFirebase();
+  }
+
+  Future<void> _syncWithFirebase() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('settings')
+          .doc('app_settings')
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        bool needsUpdate = false;
+
+        // Check each setting and update if needed
+        if (data['fontSize'] != _fontSize) {
+          _fontSize = data['fontSize'] as double;
+          needsUpdate = true;
+        }
+        if (data['listDensity'] != _listDensity) {
+          _listDensity = data['listDensity'] as String;
+          needsUpdate = true;
+        }
+        if (data['themeMode'] != _themeMode.toString().split('.').last) {
+          _themeMode = ThemeMode.values.firstWhere(
+            (mode) => mode.toString() == 'ThemeMode.${data['themeMode']}',
+            orElse: () => ThemeMode.system,
+          );
+          needsUpdate = true;
+        }
+        if (data['accentColor'] != _accentColor.value) {
+          _accentColor = Color(data['accentColor'] as int);
+          needsUpdate = true;
+        }
+        if (data['sortOrder'] != _sortOrder) {
+          _sortOrder = data['sortOrder'] as String;
+          needsUpdate = true;
+        }
+
+        // Save to local storage if updates were needed
+        if (needsUpdate) {
+          await save();
+        }
+      }
+    } catch (e) {
+      print('Error syncing settings with Firebase: $e');
+    }
+  }
+
+  Future<void> saveToFirebase() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('settings')
+          .doc('app_settings')
+          .set({
+        'fontSize': _fontSize,
+        'listDensity': _listDensity,
+        'themeMode': _themeMode.toString().split('.').last,
+        'accentColor': _accentColor.value,
+        'sortOrder': _sortOrder,
+        'lastUpdated': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      print('Error saving settings to Firebase: $e');
+    }
+  }
+
+  // Update methods to include Firebase sync
   Future<void> updateFontSize(double size) async {
     _fontSize = size;
     await save();
+    await saveToFirebase();
   }
 
   Future<void> updateListDensity(String density) async {
     _listDensity = density;
     await save();
+    await saveToFirebase();
   }
 
   Future<void> updateLastExportDate() async {
@@ -96,5 +203,23 @@ class Settings {
       _readBooks--;
       await save();
     }
+  }
+
+  Future<void> updateThemeMode(ThemeMode mode) async {
+    _themeMode = mode;
+    await save();
+    await saveToFirebase();
+  }
+
+  Future<void> updateAccentColor(Color color) async {
+    _accentColor = color;
+    await save();
+    await saveToFirebase();
+  }
+
+  Future<void> updateSortOrder(String order) async {
+    _sortOrder = order;
+    await save();
+    await saveToFirebase();
   }
 }

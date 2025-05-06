@@ -32,14 +32,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ThemeMode _themeMode = ThemeMode.system;
   Color _selectedAccentColor = Colors.teal;
   String _sortOrder = 'title';
+  Color _accentColor = Colors.teal;
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
-    _loadThemeMode();
-    _loadSortOrder();
-    _selectedAccentColor = widget.accentColor;
   }
 
   Future<void> _loadThemeMode() async {
@@ -54,8 +52,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveThemeMode(ThemeMode mode) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('themeMode', mode.toString().split('.').last);
+    final settings = app_settings.Settings();
+    await settings.load();
+    await settings.updateThemeMode(mode);
     widget.onThemeChanged(mode);
   }
 
@@ -67,27 +66,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveSortOrder(String order) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('sortOrder', order);
+    final settings = app_settings.Settings();
+    await settings.load();
+    await settings.updateSortOrder(order);
     widget.onSortOrderChanged(order);
   }
 
   Future<void> _loadSettings() async {
-    try {
-      _settings = app_settings.Settings();
-      await _settings.load();
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'Error loading settings: $e';
-          _isLoading = false;
-        });
-      }
+    final settings = app_settings.Settings();
+    await settings.load();
+    if (mounted) {
+      setState(() {
+        _themeMode = settings.themeMode;
+        _accentColor = settings.accentColor;
+        _sortOrder = settings.sortOrder;
+      });
     }
   }
 
@@ -196,7 +189,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
-        backgroundColor: widget.accentColor,
+        backgroundColor: _accentColor,
       ),
       body: MediaQuery(
         data: MediaQuery.of(context).copyWith(textScaleFactor: 0.85),
@@ -261,7 +254,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           setState(() {
                             _selectedAccentColor = color;
                           });
-                          widget.onAccentColorChanged(color);
+                          _saveAccentColor(color);
                         },
                       ),
                     ),
@@ -345,9 +338,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: const Text('Reading Progress'),
                       subtitle: LinearProgressIndicator(
                         value: _settings.readingProgress / 100,
-                        backgroundColor: widget.accentColor.withOpacity(0.1),
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(widget.accentColor),
+                        backgroundColor: _accentColor.withOpacity(0.1),
+                        valueColor: AlwaysStoppedAnimation<Color>(_accentColor),
                       ),
                       trailing: Text(
                           '${_settings.readingProgress.toStringAsFixed(1)}%'),
@@ -434,6 +426,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _saveAccentColor(Color color) async {
+    final settings = app_settings.Settings();
+    await settings.load();
+    await settings.updateAccentColor(color);
+    widget.onAccentColorChanged(color);
   }
 }
 

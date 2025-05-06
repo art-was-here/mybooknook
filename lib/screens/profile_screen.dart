@@ -74,25 +74,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     print('DEBUG: -------- Profile Loading Process Started --------');
     print('DEBUG: Starting initialization');
 
-    // Load user data from Firestore
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-
-      if (userDoc.exists) {
-        setState(() {
-          _username = userDoc.data()!['displayName'] ?? '';
-          _birthday = userDoc.data()!['birthday']?.toDate();
-        });
-      }
-    }
-
     // Load cached data first
     await _loadCachedData();
     await _loadBookStats();
+
+    // Then sync with Firebase if needed
+    await _syncWithFirebase();
 
     print('DEBUG: -------- Profile Loading Process Completed --------');
 
@@ -104,12 +91,85 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _syncWithFirebase() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+
+        // Check if we need to update local data
+        bool needsUpdate = false;
+
+        // Check profile image
+        final newBase64Image = data['profileImageBase64'];
+        if (newBase64Image != null && newBase64Image != _base64Image) {
+          _base64Image = newBase64Image;
+          needsUpdate = true;
+        }
+
+        // Check other data
+        final newTotalBooks = data['totalBooks'] ?? 0;
+        final newTotalPages = data['totalPages'] ?? 0;
+        final newFavoriteGenre = data['favoriteGenre'] ?? '';
+        final newFavoriteAuthor = data['favoriteAuthor'] ?? '';
+        final newLastUpdated = data['lastUpdated'] ?? '';
+        final newAboutMe = data['aboutMe'] ?? '';
+        final newFavoriteGenreTags =
+            List<String>.from(data['favoriteGenreTags'] ?? []);
+
+        if (newTotalBooks != _totalBooks ||
+            newTotalPages != _totalPages ||
+            newFavoriteGenre != _favoriteGenre ||
+            newFavoriteAuthor != _favoriteAuthor ||
+            newLastUpdated != _lastUpdated ||
+            newAboutMe != _aboutMe ||
+            !_areListsEqual(newFavoriteGenreTags, _favoriteGenreTags)) {
+          setState(() {
+            _totalBooks = newTotalBooks;
+            _totalPages = newTotalPages;
+            _favoriteGenre = newFavoriteGenre;
+            _favoriteAuthor = newFavoriteAuthor;
+            _lastUpdated = newLastUpdated;
+            _aboutMe = newAboutMe;
+            _favoriteGenreTags = newFavoriteGenreTags;
+            _selectedGenres.clear();
+            _selectedGenres.addAll(newFavoriteGenreTags);
+          });
+
+          needsUpdate = true;
+        }
+
+        // Save to local storage if updates were needed
+        if (needsUpdate) {
+          await _saveProfileData();
+        }
+      }
+    } catch (e) {
+      print('Error syncing with Firebase: $e');
+    }
+  }
+
+  bool _areListsEqual(List<String> list1, List<String> list2) {
+    if (list1.length != list2.length) return false;
+    for (int i = 0; i < list1.length; i++) {
+      if (list1[i] != list2[i]) return false;
+    }
+    return true;
+  }
+
   Future<void> _loadCachedData() async {
     print('Loading cached profile data');
     final prefs = await SharedPreferences.getInstance();
 
     // Load cached image
-    final cachedImage = prefs.getString('cachedProfileImage');
+    final cachedImage = prefs.getString('profileImage');
     final lastUpdate = prefs.getInt('lastImageUpdate');
 
     if (cachedImage != null && lastUpdate != null) {
@@ -135,52 +195,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final favoriteAuthor = prefs.getString('favoriteAuthor') ?? '';
     final lastUpdated = prefs.getString('statsLastUpdated') ?? '';
 
-    // Load favorite books and verify they exist in user's lists
+    // Load favorite books
     final favoriteBooksJson = prefs.getString('favoriteBooks') ?? '[]';
     final List<dynamic> favoriteBooksList = jsonDecode(favoriteBooksJson);
-    final List<Map<String, dynamic>> tempFavoriteBooks = favoriteBooksList
+    _favoriteBooks = favoriteBooksList
         .map((book) => Map<String, dynamic>.from(book))
         .toList();
 
-    print('Loaded ${tempFavoriteBooks.length} favorite books from cache');
-    print(
-        'Favorite book IDs: ${tempFavoriteBooks.map((b) => b['id']).toList()}');
+    // Load username
+    final username = prefs.getString('username') ?? '';
 
-    // Get all books from user's lists
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final listsSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('lists')
-          .get();
+    // Load birthday
+    final birthdayStr = prefs.getString('birthday');
+    final birthday = birthdayStr != null ? DateTime.parse(birthdayStr) : null;
 
-      print('Found ${listsSnapshot.docs.length} lists');
+    // Load about me section
+    final aboutMe = prefs.getString('aboutMe') ?? '';
 
-      final Set<String> validBookIds = {};
-      for (var list in listsSnapshot.docs) {
-        final booksSnapshot = await list.reference.collection('books').get();
-        print('List ${list.id} has ${booksSnapshot.docs.length} books');
-        for (var book in booksSnapshot.docs) {
-          validBookIds.add(book.id);
-        }
-      }
-
-      print('Valid book IDs from lists: $validBookIds');
-
-      // Filter favorite books to only include those that exist in lists
-      _favoriteBooks = tempFavoriteBooks.where((book) {
-        final bool isValid = validBookIds.contains(book['id']);
-        if (!isValid) {
-          print('Removing book ${book['id']} as it\'s not in any list');
-        }
-        return isValid;
-      }).toList();
-
-      print('Final favorite books count: ${_favoriteBooks.length}');
-    } else {
-      _favoriteBooks = [];
-    }
+    // Load favorite genre tags
+    final genreTags = prefs.getStringList('favoriteGenreTags') ?? [];
 
     if (mounted) {
       setState(() {
@@ -189,22 +222,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _favoriteGenre = favoriteGenre;
         _favoriteAuthor = favoriteAuthor;
         _lastUpdated = lastUpdated;
-      });
-    }
-
-    // Load about me section
-    final aboutMe = prefs.getString('aboutMe') ?? '';
-    if (mounted) {
-      setState(() {
+        _username = username;
+        _birthday = birthday;
         _aboutMe = aboutMe;
         _bioController.text = aboutMe;
-      });
-    }
-
-    // Load favorite genre tags
-    final genreTags = prefs.getStringList('favoriteGenreTags') ?? [];
-    if (mounted) {
-      setState(() {
         _favoriteGenreTags = genreTags;
         _selectedGenres.clear();
         _selectedGenres.addAll(genreTags);
@@ -231,6 +252,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     // Save favorite books
     await prefs.setString('favoriteBooks', jsonEncode(_favoriteBooks));
+
+    // Save username
+    await prefs.setString('username', _username);
+
+    // Save birthday
+    if (_birthday != null) {
+      await prefs.setString('birthday', _birthday!.toIso8601String());
+    }
+
+    // Save profile image
+    if (_base64Image != null) {
+      await prefs.setString('profileImage', _base64Image!);
+      await prefs.setInt(
+          'lastImageUpdate', DateTime.now().millisecondsSinceEpoch);
+    }
 
     print('Profile data saved successfully');
   }
@@ -407,10 +443,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
-      'bio': _bioController.text,
-      'favoriteGenres': _selectedGenres,
-    });
+    // Save to local storage first
+    await _saveProfileData();
+
+    // Then sync with Firebase
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .update({
+        'bio': _bioController.text,
+        'favoriteGenres': _selectedGenres,
+        'lastUpdated': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      print('Error saving to Firebase: $e');
+    }
 
     setState(() {
       _isEditing = false;
