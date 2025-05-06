@@ -47,5 +47,18 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs camera access to scan ISBN numbers from books</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.artwashere.mybooknook</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>mybooknook</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

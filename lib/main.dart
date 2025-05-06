@@ -3,10 +3,16 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:app_links/app_links.dart';
+import 'dart:async';
+import 'dart:convert';
 import 'widgets/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/username_setup_screen.dart';
+import 'models/book.dart';
+import 'widgets/scan_book_details_card.dart';
+import 'services/book_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,11 +30,22 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   ThemeMode _themeMode = ThemeMode.system;
   Color _accentColor = Colors.teal; // Default accent color
+  late AppLinks _appLinks;
+  StreamSubscription? _linkSubscription;
+  Book? _sharedBook;
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
     super.initState();
     _loadAccentColor();
+    _initDeepLinkListener();
+  }
+
+  @override
+  void dispose() {
+    _linkSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadAccentColor() async {
@@ -60,9 +77,146 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
+  Future<void> _initDeepLinkListener() async {
+    try {
+      print('Initializing deep link listener...');
+      _appLinks = AppLinks();
+
+      // Handle initial link if the app was launched from a link
+      print('Checking for initial link...');
+      final initialLink = await _appLinks.getInitialAppLink();
+      if (initialLink != null) {
+        print('Got initial link: ${initialLink.toString()}');
+        _handleDeepLink(initialLink);
+      } else {
+        print('No initial link found');
+      }
+
+      // Handle links when app is already running
+      print('Setting up link stream listener...');
+      _linkSubscription = _appLinks.uriLinkStream.listen(
+        (uri) {
+          print('Received link while app is running: ${uri.toString()}');
+          _handleDeepLink(uri);
+        },
+        onError: (err) {
+          print('Error in link stream: $err');
+        },
+        cancelOnError: false,
+      );
+      print('Deep link listener initialized successfully');
+    } catch (e) {
+      print('Error initializing deep link listener: $e');
+    }
+  }
+
+  void _handleDeepLink(Uri uri) async {
+    print('\n=== Deep Link Handling Started ===');
+    print('URI received: ${uri.toString()}');
+    print('URI path: ${uri.path}');
+    print('URI query parameters: ${uri.queryParameters}');
+
+    // Check if this is a book deep link by looking for the 'book' host
+    if (uri.host == 'book') {
+      try {
+        final isbn = uri.queryParameters['isbn'];
+        print('ISBN extracted: $isbn');
+
+        if (isbn != null) {
+          print('Waiting for navigator to be ready...');
+          await Future.delayed(const Duration(milliseconds: 500));
+
+          if (!mounted) {
+            print('Widget not mounted, aborting');
+            return;
+          }
+
+          print('Getting navigator context...');
+          final context = _navigatorKey.currentContext;
+          if (context == null) {
+            print('No valid navigator context found');
+            return;
+          }
+          print('Got valid navigator context');
+
+          print('Creating BookService...');
+          final bookService = BookService(context);
+
+          print('Fetching book details for ISBN: $isbn');
+          final book = await bookService.fetchBookDetails(isbn);
+
+          if (book != null) {
+            print('Book found: ${book.title}');
+            print('Getting user lists...');
+
+            // Get the current user's lists
+            final user = FirebaseAuth.instance.currentUser;
+            Map<String, String> lists = {};
+
+            if (user != null) {
+              print('User logged in: ${user.uid}');
+              final listsSnapshot = await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .collection('lists')
+                  .get();
+
+              print('Found ${listsSnapshot.docs.length} lists');
+              for (var doc in listsSnapshot.docs) {
+                lists[doc.id] = doc.data()['name'] as String;
+              }
+            } else {
+              print('No user logged in');
+            }
+
+            if (!mounted) {
+              print('Widget not mounted after fetching data, aborting');
+              return;
+            }
+
+            print('Showing ScanBookDetailsCard...');
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              builder: (BuildContext context) {
+                print('Building ScanBookDetailsCard');
+                return ScanBookDetailsCard(
+                  book: book,
+                  bookService: bookService,
+                  lists: lists,
+                  onClose: () {
+                    print('ScanBookDetailsCard closed');
+                    Navigator.pop(context);
+                  },
+                );
+              },
+            );
+            print('Modal bottom sheet shown');
+          } else {
+            print('Book not found for ISBN: $isbn');
+            if (mounted && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Book not found')),
+              );
+            }
+          }
+        } else {
+          print('No ISBN found in URL parameters');
+        }
+      } catch (e, stackTrace) {
+        print('Error handling deep link: $e');
+        print('Stack trace: $stackTrace');
+      }
+    } else {
+      print('Not a book deep link: ${uri.host}');
+    }
+    print('=== Deep Link Handling Completed ===\n');
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'MyBookNook',
       theme: ThemeData(
         primarySwatch: Colors.blue,

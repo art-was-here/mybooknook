@@ -1571,6 +1571,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final cachedBook = await _getCachedBook(isbn);
       if (cachedBook != null) {
         if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+        });
         _showBookDetails(cachedBook, isScanned: true);
         return;
       }
@@ -1591,6 +1594,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
       // Show book details
       if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
       _showBookDetails(book, isScanned: true);
     } catch (e) {
       if (!mounted) return;
@@ -1625,14 +1631,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               book: book,
               bookService: BookService(modalContext),
               lists: {_selectedListId ?? '': _selectedListName ?? ''},
+              onClose: () {
+                if (mounted) {
+                  setState(() {
+                    _isLoading = false;
+                  });
+                }
+              },
             )
           : BookDetailsCard(
               book: book,
               bookService: BookService(modalContext),
-              listId: _selectedListId ?? '',
-              listName: _selectedListName ?? '',
+              listId: bookWithList.listId,
+              listName: bookWithList.listName,
+              actualListId: bookWithList.listId,
             ),
-    );
+    ).whenComplete(() {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    });
   }
 
   Future<void> _addBookToList(Book book, String listId) async {

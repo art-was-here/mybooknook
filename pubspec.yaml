@@ -28,6 +28,9 @@ dependencies:
   image_picker: ^1.0.7
   firebase_storage: ^11.5.6
   intl: ^0.19.0
+  share_plus: ^7.2.1
+  app_links: ^3.4.1
+  firebase_dynamic_links: ^5.4.8
 
 flutter_launcher_icons:
   android: true

@@ -6,6 +6,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/settings.dart' as app_settings;
 import 'dart:convert';
+import 'package:share_plus/share_plus.dart';
+import 'package:http/http.dart' as http;
+import 'scan_book_details_card.dart';
 
 class BookDetailsCard extends StatefulWidget {
   final Book book;
@@ -276,6 +279,41 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
     }
   }
 
+  Future<void> _shareBook() async {
+    try {
+      // Create a URL with just the ISBN
+      final longUrl =
+          'https://mybooknook-5ca64.web.app/book?isbn=${widget.book.isbn}';
+
+      // Use is.gd to create a short URL
+      final response = await http.get(
+        Uri.parse(
+            'https://is.gd/create.php?format=json&url=${Uri.encodeComponent(longUrl)}'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final shortUrl = data['shorturl'];
+
+        if (shortUrl != null) {
+          await Share.share(
+            'Check out ${widget.book.title} on MyBookNook!\n$shortUrl',
+          );
+        } else {
+          throw Exception('Failed to get short URL');
+        }
+      } else {
+        throw Exception('Failed to create short URL');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error sharing book: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
@@ -434,11 +472,21 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
                           const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            children: widget.book.categories!
-                                .map((category) => Chip(label: Text(category)))
-                                .toList(),
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Wrap(
+                              spacing: 8.0,
+                              runSpacing: 4.0,
+                              children: widget.book.categories!.map((category) {
+                                return Chip(
+                                  label: Text(category),
+                                  backgroundColor: Theme.of(context)
+                                      .colorScheme
+                                      .primaryContainer,
+                                );
+                              }).toList(),
+                            ),
                           ),
                           const SizedBox(height: 16),
                         ],
@@ -506,6 +554,23 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                             onPressed: _toggleFavorite,
                           ),
                           onTap: _toggleFavorite,
+                        ),
+                        const SizedBox(height: 16),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          child: ElevatedButton.icon(
+                            onPressed: _shareBook,
+                            icon: const Icon(Icons.share),
+                            label: const Text('Share Book'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer,
+                              foregroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .onPrimaryContainer,
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 16),
                         SizedBox(

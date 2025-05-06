@@ -67,8 +67,9 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
   void _handleClose() {
     if (widget.onClose != null) {
       widget.onClose!();
-    } else {
-      Navigator.pop(context);
+    }
+    if (context.mounted) {
+      Navigator.of(context).pop();
     }
   }
 
