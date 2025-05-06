@@ -35,18 +35,19 @@ class _ListItemState extends State<ListItem> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10.0),
+          padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 0.0),
           child: Card(
             elevation: 2,
+            margin: EdgeInsets.zero,
             color: widget.accentColor.withOpacity(0.1),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
+              padding: const EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 0.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16.0, vertical: 8.0),
+                        horizontal: 16.0, vertical: 0.0),
                     child: Row(
                       children: [
                         Text(
@@ -58,6 +59,8 @@ class _ListItemState extends State<ListItem> {
                         ),
                         const Spacer(),
                         IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
                           icon: Icon(
                             widget.isExpanded
                                 ? Icons.expand_less
@@ -69,8 +72,15 @@ class _ListItemState extends State<ListItem> {
                       ],
                     ),
                   ),
-                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                    child: const Divider(height: 1),
+                  ),
                   ListTile(
+                    dense: true,
+                    minVerticalPadding: 0,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16.0, vertical: 0.0),
                     title: Text(
                       '${widget.bookCount} book${widget.bookCount == 1 ? '' : 's'}',
                       style: Theme.of(context).textTheme.bodyMedium,
@@ -87,20 +97,39 @@ class _ListItemState extends State<ListItem> {
                                 bookWithList == widget.books?.last;
 
                             return ListTile(
-                              contentPadding:
-                                  const EdgeInsets.symmetric(horizontal: 16.0),
+                              dense: true,
+                              minVerticalPadding: 0,
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0, vertical: 0.0),
                               leading: book.imageUrl != null
-                                  ? Image.network(
-                                      book.imageUrl!,
+                                  ? Container(
                                       width: 50,
                                       height: 75,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (BuildContext imageContext,
-                                              Object error,
-                                              StackTrace? stackTrace) =>
-                                          const Icon(Icons.book, size: 50),
+                                      clipBehavior: Clip.antiAlias,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Image.network(
+                                        book.imageUrl!,
+                                        width: 50,
+                                        height: 75,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (BuildContext
+                                                    imageContext,
+                                                Object error,
+                                                StackTrace? stackTrace) =>
+                                            const Icon(Icons.book, size: 50),
+                                      ),
                                     )
-                                  : const Icon(Icons.book, size: 50),
+                                  : Container(
+                                      width: 50,
+                                      height: 75,
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey[200],
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Icon(Icons.book, size: 50),
+                                    ),
                               title: Text(book.title),
                               subtitle: Text(
                                 book.authors?.join(', ') ?? 'Unknown Author',
