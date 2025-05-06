@@ -6,17 +6,20 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/settings.dart' as app_settings;
 import 'dart:convert';
+import 'select_list.dart' show SelectListDialog;
 
 class ScanBookDetailsCard extends StatefulWidget {
   final Book book;
   final BookService bookService;
   final Map<String, String> lists;
+  final VoidCallback? onClose;
 
   const ScanBookDetailsCard({
     super.key,
     required this.book,
     required this.bookService,
     required this.lists,
+    this.onClose,
   });
 
   @override
@@ -58,6 +61,14 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
       setState(() {
         _canDismiss = false;
       });
+    }
+  }
+
+  void _handleClose() {
+    if (widget.onClose != null) {
+      widget.onClose!();
+    } else {
+      Navigator.pop(context);
     }
   }
 
@@ -162,7 +173,7 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Book saved to $_selectedListName')),
       );
-      Navigator.pop(context);
+      _handleClose();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -365,6 +376,10 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
                         ),
                       ),
                     ),
+                    Text(
+                      'Book Details',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
                   ],
                 ),
               ),
@@ -399,11 +414,13 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
                                     mainAxisAlignment:
                                         MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text(
-                                        widget.book.title,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleLarge,
+                                      Expanded(
+                                        child: Text(
+                                          widget.book.title,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleLarge,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -562,7 +579,13 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
                   children: [
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: _showListSelectionDialog,
+                        onPressed: () async {
+                          final selectedList =
+                              await SelectListDialog.show(context, widget.book);
+                          if (selectedList != null) {
+                            _handleClose();
+                          }
+                        },
                         style: ElevatedButton.styleFrom(
                           minimumSize: const Size.fromHeight(50),
                         ),

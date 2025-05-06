@@ -354,11 +354,13 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                                     mainAxisAlignment:
                                         MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text(
-                                        widget.book.title,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleLarge,
+                                      Expanded(
+                                        child: Text(
+                                          widget.book.title,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleLarge,
+                                        ),
                                       ),
                                     ],
                                   ),
