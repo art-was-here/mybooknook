@@ -31,6 +31,8 @@ dependencies:
   share_plus: ^7.2.1
   app_links: ^3.4.1
   firebase_dynamic_links: ^5.4.8
+  url_launcher: ^6.2.4
+  flutter_svg: ^2.0.9
 
 flutter_launcher_icons:
   android: true
@@ -45,3 +47,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/app_icon.png
+    - assets/logos/

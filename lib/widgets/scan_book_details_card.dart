@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/settings.dart' as app_settings;
 import 'dart:convert';
 import 'select_list.dart' show SelectListDialog;
+import 'package:url_launcher/url_launcher.dart';
 
 class ScanBookDetailsCard extends StatefulWidget {
   final Book book;
@@ -333,6 +334,17 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
     }
   }
 
+  Future<void> _launchUrl(String urlString) async {
+    final Uri url = Uri.parse(urlString);
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not launch URL')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
@@ -567,6 +579,66 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
                             onPressed: _toggleFavorite,
                           ),
                           onTap: _toggleFavorite,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Purchase Book',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  final url =
+                                      'https://books.google.com/books?isbn=${widget.book.isbn}';
+                                  _launchUrl(url);
+                                },
+                                icon: const Icon(Icons.book),
+                                label: const Text('Google Books'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Theme.of(context)
+                                      .colorScheme
+                                      .primaryContainer,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  final url =
+                                      'https://www.amazon.com/s?k=${widget.book.isbn}';
+                                  _launchUrl(url);
+                                },
+                                icon: const Icon(Icons.shopping_cart),
+                                label: const Text('Amazon'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Theme.of(context)
+                                      .colorScheme
+                                      .primaryContainer,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  final url =
+                                      'https://www.abebooks.com/servlet/SearchResults?isbn=${widget.book.isbn}';
+                                  _launchUrl(url);
+                                },
+                                icon: const Icon(Icons.store),
+                                label: const Text('AbeBooks'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Theme.of(context)
+                                      .colorScheme
+                                      .primaryContainer,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 16),
                       ],

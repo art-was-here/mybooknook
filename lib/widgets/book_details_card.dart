@@ -9,6 +9,8 @@ import 'dart:convert';
 import 'package:share_plus/share_plus.dart';
 import 'package:http/http.dart' as http;
 import 'scan_book_details_card.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 class BookDetailsCard extends StatefulWidget {
   final Book book;
@@ -314,6 +316,17 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
     }
   }
 
+  Future<void> _launchUrl(String urlString) async {
+    final Uri url = Uri.parse(urlString);
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not launch URL')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
@@ -573,6 +586,158 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                        Text(
+                          'Purchase Book',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 15),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  SizedBox(
+                                    width: 98,
+                                    height: 48,
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        final url =
+                                            'https://books.google.com/books?isbn=${widget.book.isbn}';
+                                        _launchUrl(url);
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Theme.of(context)
+                                            .colorScheme
+                                            .primaryContainer,
+                                        padding: EdgeInsets.zero,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      child: SvgPicture.asset(
+                                        'assets/logos/google_books.svg',
+                                        height: 24,
+                                        width: 24,
+                                        fit: BoxFit.contain,
+                                        placeholderBuilder: (context) =>
+                                            const Icon(Icons.book, size: 24),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      'Google Books',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  SizedBox(
+                                    width: 98,
+                                    height: 48,
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        final url =
+                                            'https://www.amazon.com/s?k=${widget.book.isbn}';
+                                        _launchUrl(url);
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Theme.of(context)
+                                            .colorScheme
+                                            .primaryContainer,
+                                        padding: EdgeInsets.zero,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      child: SvgPicture.asset(
+                                        'assets/logos/amazon.svg',
+                                        height: 24,
+                                        width: 24,
+                                        fit: BoxFit.contain,
+                                        placeholderBuilder: (context) =>
+                                            const Icon(Icons.shopping_cart,
+                                                size: 24),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      'Amazon',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  SizedBox(
+                                    width: 98,
+                                    height: 48,
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        final url =
+                                            'https://www.abebooks.com/servlet/SearchResults?isbn=${widget.book.isbn}';
+                                        _launchUrl(url);
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Theme.of(context)
+                                            .colorScheme
+                                            .primaryContainer,
+                                        padding: EdgeInsets.zero,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      child: SvgPicture.asset(
+                                        'assets/logos/abebooks.svg',
+                                        height: 24,
+                                        width: 24,
+                                        fit: BoxFit.contain,
+                                        placeholderBuilder: (context) =>
+                                            const Icon(Icons.store, size: 24),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      'AbeBooks',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 15),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Divider(
+                            color: Theme.of(context).dividerColor,
+                          ),
+                        ),
+                        const SizedBox(height: 15),
                         SizedBox(
                           width: double.infinity,
                           child: Padding(
