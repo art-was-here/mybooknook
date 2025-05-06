@@ -1,23 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_expandable_fab/flutter_expandable_fab.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
+import 'dart:convert';
 import '../models/book.dart';
 import '../models/settings.dart' as app_settings;
 import '../services/book_service.dart';
 import '../services/barcode_service.dart';
 import '../services/text_recognition_service.dart';
+import '../services/database_service.dart';
+import '../services/book_cache_service.dart';
+import '../services/firestore_service.dart';
+import '../services/book_loading_service.dart';
+import '../services/book_sorting_service.dart';
+import '../services/error_service.dart';
 import 'book_search_sheet.dart';
 import 'book_details_card.dart';
-import 'dart:async';
-import 'package:flutter_expandable_fab/flutter_expandable_fab.dart';
-import 'dart:convert';
+import 'profile_image_widget.dart';
+import 'scan_book_details_card.dart';
 import 'home_screen/list_item.dart';
 import 'home_screen/list_manager.dart';
 import 'home_screen/book_with_list.dart';
-import 'scan_book_details_card.dart';
 import '../screens/settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -59,6 +66,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   String? _cachedProfileImage;
   bool _isProfileImageLoading = true;
 
+  // Services
+  late final DatabaseService _databaseService;
+  late final BookCacheService _bookCacheService;
+  late final BookLoadingService _bookLoadingService;
+  late final BookSortingService _bookSortingService;
+
   @override
   void initState() {
     super.initState();
@@ -98,8 +111,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       print('Error in auth state listener: $e');
       print('Stack trace: $stackTrace');
       if (mounted) {
+        ErrorService.setError(
+            'Authentication error: $e. Please sign in again.');
         setState(() {
-          _errorMessage = 'Authentication error: $e. Please sign in again.';
           _isLoading = false;
         });
       }
@@ -559,12 +573,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             await _loadBooks();
           }
 
-          ScaffoldMessenger.of(context).showSnackBar(
+          ScaffoldMessenger.of(_buildContext).showSnackBar(
             SnackBar(content: Text('Created new list: $result')),
           );
         } catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
+            ScaffoldMessenger.of(_buildContext).showSnackBar(
               SnackBar(content: Text('Error creating list: $e')),
             );
           }
@@ -648,13 +662,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           }
           await _loadBooks();
 
-          ScaffoldMessenger.of(context).showSnackBar(
+          ScaffoldMessenger.of(_buildContext).showSnackBar(
             const SnackBar(
                 content: Text('List and all its books deleted successfully')),
           );
         } catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
+            ScaffoldMessenger.of(_buildContext).showSnackBar(
               SnackBar(content: Text('Error deleting list: $e')),
             );
           }
@@ -742,7 +756,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _listNamesLastUpdated = DateTime.now();
 
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
+          ScaffoldMessenger.of(_buildContext).showSnackBar(
             SnackBar(content: Text('Added to ${selectedList['name']}')),
           );
 
@@ -778,14 +792,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           }
         } catch (e) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
+          ScaffoldMessenger.of(_buildContext).showSnackBar(
             SnackBar(content: Text('Error adding book: $e')),
           );
         }
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(_buildContext).showSnackBar(
         SnackBar(content: Text('Error loading lists: $e')),
       );
     }
@@ -805,21 +819,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     print(
         'Selected List: $_selectedListName, ID: $_selectedListId, Sort: $_sortPreference');
     return WillPopScope(
-      onWillPop: () async {
-        final now = DateTime.now();
-        if (_lastBackPressTime == null ||
-            now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
-          _lastBackPressTime = now;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Press back again to exit'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-          return false;
-        }
-        return true;
-      },
+      onWillPop: _onWillPop,
       child: Scaffold(
         appBar: AppBar(
           title: PopupMenuButton<String>(
@@ -1345,7 +1345,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _isLoading = false;
           _errorMessage = 'Error loading books: $e';
         });
-        ScaffoldMessenger.of(context as BuildContext).showSnackBar(
+        ScaffoldMessenger.of(_buildContext).showSnackBar(
           SnackBar(content: Text('Error loading books: $e')),
         );
       }
@@ -1426,7 +1426,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     trailing: IconButton(
                       icon: const Icon(Icons.delete, color: Colors.red),
                       onPressed: () {
-                        _deleteList(context, listId);
+                        _deleteList(_buildContext, listId);
                       },
                     ),
                   ),
@@ -1569,5 +1569,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _isProfileImageLoading = false;
       });
     }
+  }
+
+  Future<bool> _onWillPop() async {
+    final now = DateTime.now();
+    if (_lastBackPressTime == null ||
+        now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+      _lastBackPressTime = now;
+      ScaffoldMessenger.of(_buildContext).showSnackBar(
+        const SnackBar(
+          content: Text('Press back again to exit'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return false;
+    }
+    return true;
   }
 }

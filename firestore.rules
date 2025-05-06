@@ -10,14 +10,30 @@ service cloud.firestore {
     match /{path=**}/books/{bookId} {
       allow read: if request.auth != null && (
         // Allow reading books from the user's own lists
-        resource.__name__.matches('^/databases/[^/]+/documents/users/' + request.auth.uid + '/lists/.*/books/.*') ||
-        // Allow reading books where the user is the owner
+        path.matches('users/' + request.auth.uid + '/.*') ||
+        // Allow reading books where the user is the owner (for collection group queries)
         resource.data.userId == request.auth.uid
       );
-      allow write: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow write: if request.auth != null && (
+        // Allow writing to books in user's own lists
+        path.matches('users/' + request.auth.uid + '/.*') ||
+        // Allow updating books where user is the owner
+        request.resource.data.userId == request.auth.uid
+      );
     }
     match /users/{userId}/lists/{listId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      match /books/{bookId} {
+        allow read: if request.auth != null && (
+          userId == request.auth.uid ||
+          resource.data.userId == request.auth.uid
+        );
+        allow write: if request.auth != null && (
+          userId == request.auth.uid &&
+          request.resource.data.userId == request.auth.uid
+        );
+      }
     }
   }
 }
