@@ -109,17 +109,17 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
                 controller: _usernameController,
                 decoration: const InputDecoration(
                   labelText: 'Username',
-                  hintText: 'Choose a unique username',
+                  hintText: 'Choose a unique username (max 15 chars)',
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter a username';
                   }
-                  if (value.length < 3) {
-                    return 'Username must be at least 3 characters';
+                  if (value.length > 15) {
+                    return 'Username must be 15 characters or less';
                   }
-                  if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value)) {
-                    return 'Username can only contain letters, numbers, and underscores';
+                  if (!RegExp(r'^[a-zA-Z0-9\-_\.]+$').hasMatch(value)) {
+                    return 'Username can only contain letters, numbers, -, _, and .';
                   }
                   return null;
                 },
