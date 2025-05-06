@@ -556,7 +556,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Profile Info Card
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -589,7 +589,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Favorites Card
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -680,7 +680,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Book Statistics Card
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -720,7 +720,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Genres Card
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -931,7 +931,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildBookStats() {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(10.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

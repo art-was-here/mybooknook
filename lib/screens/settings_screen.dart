@@ -209,44 +209,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Appearance',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: widget.accentColor,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
                     ),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 15.0),
+                      child: const Divider(height: 1),
+                    ),
                     const SizedBox(height: 16),
                     ListTile(
-                      title: const Text('Theme Mode'),
-                      subtitle: DropdownButton<ThemeMode>(
-                        value: _themeMode,
-                        items: const [
-                          DropdownMenuItem(
-                            value: ThemeMode.system,
-                            child: Text('System'),
-                          ),
-                          DropdownMenuItem(
-                            value: ThemeMode.light,
-                            child: Text('Light'),
-                          ),
-                          DropdownMenuItem(
-                            value: ThemeMode.dark,
-                            child: Text('Dark'),
-                          ),
-                        ],
+                      title: const Text('Follow System Dark Mode'),
+                      trailing: Switch(
+                        value: _themeMode == ThemeMode.system,
                         onChanged: (value) {
-                          if (value != null) {
-                            setState(() {
-                              _themeMode = value;
-                            });
-                            _saveThemeMode(value);
-                          }
+                          setState(() {
+                            _themeMode =
+                                value ? ThemeMode.system : ThemeMode.light;
+                          });
+                          _saveThemeMode(_themeMode);
                         },
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('Dark Mode (Manual)'),
+                      trailing: Switch(
+                        value: _themeMode == ThemeMode.dark,
+                        onChanged: _themeMode == ThemeMode.system
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  _themeMode =
+                                      value ? ThemeMode.dark : ThemeMode.light;
+                                });
+                                _saveThemeMode(_themeMode);
+                              },
                       ),
                     ),
                     ListTile(
@@ -312,16 +316,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Reading Statistics',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: widget.accentColor,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
+                    ),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 15.0),
+                      child: const Divider(height: 1),
                     ),
                     const SizedBox(height: 16),
                     ListTile(
@@ -355,16 +363,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Data Management',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: widget.accentColor,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
+                    ),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 15.0),
+                      child: const Divider(height: 1),
                     ),
                     const SizedBox(height: 16),
                     ListTile(

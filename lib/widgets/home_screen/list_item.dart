@@ -39,78 +39,82 @@ class _ListItemState extends State<ListItem> {
           child: Card(
             elevation: 2,
             color: widget.accentColor.withOpacity(0.1),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0, vertical: 8.0),
-                  child: Row(
-                    children: [
-                      Text(
-                        widget.listName,
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        icon: Icon(
-                          widget.isExpanded
-                              ? Icons.expand_less
-                              : Icons.expand_more,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16.0, vertical: 8.0),
+                    child: Row(
+                      children: [
+                        Text(
+                          widget.listName,
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                         ),
-                        onPressed: () =>
-                            widget.onToggleExpanded(widget.listName),
-                      ),
-                    ],
+                        const Spacer(),
+                        IconButton(
+                          icon: Icon(
+                            widget.isExpanded
+                                ? Icons.expand_less
+                                : Icons.expand_more,
+                          ),
+                          onPressed: () =>
+                              widget.onToggleExpanded(widget.listName),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  title: Text(
-                    '${widget.bookCount} book${widget.bookCount == 1 ? '' : 's'}',
-                    style: Theme.of(context).textTheme.bodyMedium,
+                  const Divider(height: 1),
+                  ListTile(
+                    title: Text(
+                      '${widget.bookCount} book${widget.bookCount == 1 ? '' : 's'}',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
                   ),
-                ),
-                SizeTransition(
-                  sizeFactor: widget.animation,
-                  child: Column(
-                    children: widget.books?.map((bookWithList) {
-                          final book = bookWithList.book;
-                          final isFirstBook =
-                              bookWithList == widget.books?.first;
-                          final isLastBook = bookWithList == widget.books?.last;
+                  SizeTransition(
+                    sizeFactor: widget.animation,
+                    child: Column(
+                      children: widget.books?.map((bookWithList) {
+                            final book = bookWithList.book;
+                            final isFirstBook =
+                                bookWithList == widget.books?.first;
+                            final isLastBook =
+                                bookWithList == widget.books?.last;
 
-                          return ListTile(
-                            contentPadding:
-                                const EdgeInsets.symmetric(horizontal: 16.0),
-                            leading: book.imageUrl != null
-                                ? Image.network(
-                                    book.imageUrl!,
-                                    width: 50,
-                                    height: 75,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (BuildContext imageContext,
-                                            Object error,
-                                            StackTrace? stackTrace) =>
-                                        const Icon(Icons.book, size: 50),
-                                  )
-                                : const Icon(Icons.book, size: 50),
-                            title: Text(book.title),
-                            subtitle: Text(
-                              book.authors?.join(', ') ?? 'Unknown Author',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            onTap: () => widget.onBookTap(context, book),
-                          );
-                        }).toList() ??
-                        [],
+                            return ListTile(
+                              contentPadding:
+                                  const EdgeInsets.symmetric(horizontal: 16.0),
+                              leading: book.imageUrl != null
+                                  ? Image.network(
+                                      book.imageUrl!,
+                                      width: 50,
+                                      height: 75,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (BuildContext imageContext,
+                                              Object error,
+                                              StackTrace? stackTrace) =>
+                                          const Icon(Icons.book, size: 50),
+                                    )
+                                  : const Icon(Icons.book, size: 50),
+                              title: Text(book.title),
+                              subtitle: Text(
+                                book.authors?.join(', ') ?? 'Unknown Author',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              onTap: () => widget.onBookTap(context, book),
+                            );
+                          }).toList() ??
+                          [],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
