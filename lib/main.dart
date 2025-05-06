@@ -1,10 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'widgets/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/username_setup_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -88,10 +90,25 @@ class _MyAppState extends State<MyApp> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasData) {
-                  return HomeScreen(
-                    onThemeChanged: _onThemeChanged,
-                    accentColor: _accentColor,
-                    onAccentColorChanged: _onAccentColorChanged,
+                  return StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(snapshot.data!.uid)
+                        .snapshots(),
+                    builder: (context, userSnapshot) {
+                      if (userSnapshot.connectionState ==
+                          ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
+                        return const UsernameSetupScreen();
+                      }
+                      return HomeScreen(
+                        onThemeChanged: _onThemeChanged,
+                        accentColor: _accentColor,
+                        onAccentColorChanged: _onAccentColorChanged,
+                      );
+                    },
                   );
                 }
                 return const AuthScreen();

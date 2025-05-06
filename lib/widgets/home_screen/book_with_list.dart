@@ -10,4 +10,20 @@ class BookWithList {
     required this.listId,
     required this.listName,
   });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'book': book.toMap(),
+      'listId': listId,
+      'listName': listName,
+    };
+  }
+
+  factory BookWithList.fromJson(Map<String, dynamic> json) {
+    return BookWithList(
+      book: Book.fromMap(json['book']),
+      listId: json['listId'],
+      listName: json['listName'],
+    );
+  }
 }

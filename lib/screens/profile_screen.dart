@@ -6,6 +6,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 import '../models/settings.dart' as app_settings;
 
 class ProfileScreen extends StatefulWidget {
@@ -50,6 +51,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _totalBooks = 0;
   int _totalPages = 0;
   List<Map<String, dynamic>> _favoriteBooks = [];
+  String _username = '';
+  DateTime? _birthday;
 
   @override
   void initState() {
@@ -75,6 +78,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await _loadCachedData();
     await _loadBookStats();
 
+    // Then sync with Firebase if needed
+    await _syncWithFirebase();
+
     print('DEBUG: -------- Profile Loading Process Completed --------');
 
     if (mounted) {
@@ -85,12 +91,85 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _syncWithFirebase() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+
+        // Check if we need to update local data
+        bool needsUpdate = false;
+
+        // Check profile image
+        final newBase64Image = data['profileImageBase64'];
+        if (newBase64Image != null && newBase64Image != _base64Image) {
+          _base64Image = newBase64Image;
+          needsUpdate = true;
+        }
+
+        // Check other data
+        final newTotalBooks = data['totalBooks'] ?? 0;
+        final newTotalPages = data['totalPages'] ?? 0;
+        final newFavoriteGenre = data['favoriteGenre'] ?? '';
+        final newFavoriteAuthor = data['favoriteAuthor'] ?? '';
+        final newLastUpdated = data['lastUpdated'] ?? '';
+        final newAboutMe = data['aboutMe'] ?? '';
+        final newFavoriteGenreTags =
+            List<String>.from(data['favoriteGenreTags'] ?? []);
+
+        if (newTotalBooks != _totalBooks ||
+            newTotalPages != _totalPages ||
+            newFavoriteGenre != _favoriteGenre ||
+            newFavoriteAuthor != _favoriteAuthor ||
+            newLastUpdated != _lastUpdated ||
+            newAboutMe != _aboutMe ||
+            !_areListsEqual(newFavoriteGenreTags, _favoriteGenreTags)) {
+          setState(() {
+            _totalBooks = newTotalBooks;
+            _totalPages = newTotalPages;
+            _favoriteGenre = newFavoriteGenre;
+            _favoriteAuthor = newFavoriteAuthor;
+            _lastUpdated = newLastUpdated;
+            _aboutMe = newAboutMe;
+            _favoriteGenreTags = newFavoriteGenreTags;
+            _selectedGenres.clear();
+            _selectedGenres.addAll(newFavoriteGenreTags);
+          });
+
+          needsUpdate = true;
+        }
+
+        // Save to local storage if updates were needed
+        if (needsUpdate) {
+          await _saveProfileData();
+        }
+      }
+    } catch (e) {
+      print('Error syncing with Firebase: $e');
+    }
+  }
+
+  bool _areListsEqual(List<String> list1, List<String> list2) {
+    if (list1.length != list2.length) return false;
+    for (int i = 0; i < list1.length; i++) {
+      if (list1[i] != list2[i]) return false;
+    }
+    return true;
+  }
+
   Future<void> _loadCachedData() async {
     print('Loading cached profile data');
     final prefs = await SharedPreferences.getInstance();
 
     // Load cached image
-    final cachedImage = prefs.getString('cachedProfileImage');
+    final cachedImage = prefs.getString('profileImage');
     final lastUpdate = prefs.getInt('lastImageUpdate');
 
     if (cachedImage != null && lastUpdate != null) {
@@ -123,6 +202,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         .map((book) => Map<String, dynamic>.from(book))
         .toList();
 
+    // Load username
+    final username = prefs.getString('username') ?? '';
+
+    // Load birthday
+    final birthdayStr = prefs.getString('birthday');
+    final birthday = birthdayStr != null ? DateTime.parse(birthdayStr) : null;
+
+    // Load about me section
+    final aboutMe = prefs.getString('aboutMe') ?? '';
+
+    // Load favorite genre tags
+    final genreTags = prefs.getStringList('favoriteGenreTags') ?? [];
+
     if (mounted) {
       setState(() {
         _totalBooks = totalBooks;
@@ -130,22 +222,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _favoriteGenre = favoriteGenre;
         _favoriteAuthor = favoriteAuthor;
         _lastUpdated = lastUpdated;
-      });
-    }
-
-    // Load about me section
-    final aboutMe = prefs.getString('aboutMe') ?? '';
-    if (mounted) {
-      setState(() {
+        _username = username;
+        _birthday = birthday;
         _aboutMe = aboutMe;
         _bioController.text = aboutMe;
-      });
-    }
-
-    // Load favorite genre tags
-    final genreTags = prefs.getStringList('favoriteGenreTags') ?? [];
-    if (mounted) {
-      setState(() {
         _favoriteGenreTags = genreTags;
         _selectedGenres.clear();
         _selectedGenres.addAll(genreTags);
@@ -172,6 +252,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     // Save favorite books
     await prefs.setString('favoriteBooks', jsonEncode(_favoriteBooks));
+
+    // Save username
+    await prefs.setString('username', _username);
+
+    // Save birthday
+    if (_birthday != null) {
+      await prefs.setString('birthday', _birthday!.toIso8601String());
+    }
+
+    // Save profile image
+    if (_base64Image != null) {
+      await prefs.setString('profileImage', _base64Image!);
+      await prefs.setInt(
+          'lastImageUpdate', DateTime.now().millisecondsSinceEpoch);
+    }
 
     print('Profile data saved successfully');
   }
@@ -348,10 +443,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
-      'bio': _bioController.text,
-      'favoriteGenres': _selectedGenres,
-    });
+    // Save to local storage first
+    await _saveProfileData();
+
+    // Then sync with Firebase
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .update({
+        'bio': _bioController.text,
+        'favoriteGenres': _selectedGenres,
+        'lastUpdated': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      print('Error saving to Firebase: $e');
+    }
 
     setState(() {
       _isEditing = false;
@@ -488,7 +595,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 16.0),
         child: Form(
           key: _formKey,
           child: Column(
@@ -497,65 +604,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Profile Info Card
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Profile Photo
-                          Container(
-                            width: 96, // 20% smaller than original 120
-                            height: 96,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              image: _base64Image != null
-                                  ? DecorationImage(
-                                      image: MemoryImage(
-                                          base64Decode(_base64Image!)),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : null,
-                              color: Colors.grey[200],
-                            ),
-                            child: _base64Image == null
-                                ? const Icon(
-                                    Icons.person,
-                                    size: 48,
-                                    color: Colors.grey,
-                                  )
-                                : null,
-                          ),
-                          const SizedBox(width: 16),
-                          // Username and Account Age
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '@${user?.displayName ?? 'user'}',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleLarge
-                                      ?.copyWith(
-                                        fontSize: Theme.of(context)
-                                                .textTheme
-                                                .titleLarge!
-                                                .fontSize! *
-                                            0.9,
-                                      ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Account age: $days days, $hours hours, $minutes minutes',
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                      _buildProfileHeader(),
                       const SizedBox(height: 16),
                       // About Me Section
                       Text(
@@ -584,7 +637,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Favorites Card
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -675,7 +728,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Book Statistics Card
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -715,7 +768,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Genres Card
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -853,6 +906,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildProfileHeader() {
+    final user = FirebaseAuth.instance.currentUser;
+    final accountCreationTime = user?.metadata.creationTime;
+    final accountAge = accountCreationTime != null
+        ? DateTime.now().difference(accountCreationTime)
+        : const Duration();
+    final days = accountAge.inDays;
+    final hours = accountAge.inHours % 24;
+    final minutes = accountAge.inMinutes % 60;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Profile Photo
+        CircleAvatar(
+          radius: 45,
+          backgroundImage: _base64Image != null
+              ? MemoryImage(base64Decode(_base64Image!))
+              : null,
+          child:
+              _base64Image == null ? const Icon(Icons.person, size: 45) : null,
+        ),
+        const SizedBox(width: 16),
+        // Username and Account Age
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '@$_username',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontSize:
+                          Theme.of(context).textTheme.headlineSmall!.fontSize! *
+                              0.8,
+                    ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Account age: $days days, $hours hours, $minutes minutes',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildStatColumn(String label, String value) {
     final titleStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
           fontSize: Theme.of(context).textTheme.titleMedium!.fontSize! * 0.95,
@@ -878,7 +979,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildBookStats() {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(10.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
