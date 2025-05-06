@@ -547,7 +547,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 16.0),
         child: Form(
           key: _formKey,
           child: Column(

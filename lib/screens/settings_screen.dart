@@ -201,7 +201,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: MediaQuery(
         data: MediaQuery.of(context).copyWith(textScaleFactor: 0.85),
         child: ListView(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 16.0),
           children: [
             Card(
               elevation: 4,
