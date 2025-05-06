@@ -559,9 +559,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         title: const Text('Profile'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _showLogoutDialog,
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              switch (value) {
+                case 'edit':
+                  _toggleEditMode();
+                  break;
+                case 'logout':
+                  _showLogoutDialog();
+                  break;
+              }
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              PopupMenuItem<String>(
+                value: 'edit',
+                child: Row(
+                  children: [
+                    Icon(
+                      _isEditing ? Icons.save : Icons.edit,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(_isEditing ? 'Save' : 'Edit'),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem<String>(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout, size: 20),
+                    SizedBox(width: 8),
+                    Text('Logout'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -706,18 +740,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Book Statistics',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          TextButton(
-                            onPressed: _toggleEditMode,
-                            child: Text(_isEditing ? 'Save' : 'Edit'),
-                          ),
-                        ],
+                      Text(
+                        'Book Statistics',
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 16),
                       Row(
