@@ -917,17 +917,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
               actions: [
-                IconButton(
-                  icon: const Icon(Icons.search),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const SearchScreen(),
-                      ),
-                    );
-                  },
-                ),
                 PopupMenuButton<String>(
                   icon: _isProfileImageLoading
                       ? const CircleAvatar(
@@ -947,6 +936,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   onSelected: (String value) {
                     if (value == 'profile') {
                       Navigator.pushNamed(context, '/profile');
+                    } else if (value == 'search') {
+                      Navigator.pushNamed(context, '/search');
                     } else if (value == 'settings') {
                       Navigator.pushNamed(context, '/settings');
                     } else if (value == 'logout') {
@@ -971,6 +962,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           Icon(Icons.person),
                           SizedBox(width: 8),
                           Text('Go to Profile'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: 'search',
+                      child: Row(
+                        children: [
+                          Icon(Icons.search),
+                          SizedBox(width: 8),
+                          Text('Search'),
                         ],
                       ),
                     ),
