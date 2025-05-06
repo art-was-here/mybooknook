@@ -42,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final _fabKey = GlobalKey<ExpandableFabState>();
   String? _errorMessage;
   bool _isLoading = true;
+  bool _isExpandedStatesLoaded = false;
   BookService? _bookService;
   StreamSubscription<User?>? _authSubscription;
   String _sortPreference = 'title';
@@ -58,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   DateTime? _lastBackPressTime;
   String? _cachedProfileImage;
   bool _isProfileImageLoading = true;
+  Future<void>? _listManagerInitialization;
 
   @override
   void initState() {
@@ -104,6 +106,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
       }
     });
+
+    _loadSortPreference();
+  }
+
+  Future<void> _initializeListManager(BuildContext context) async {
+    if (_listManager == null) {
+      _listManager = ListManager(context);
+      await _listManager?.loadExpandedStates();
+      // Add a delay to ensure all states are properly initialized
+      await Future.delayed(const Duration(seconds: 1));
+      if (mounted) {
+        setState(() {
+          _isExpandedStatesLoaded = true;
+        });
+      }
+    }
   }
 
   Future<void> _initializeFirestore() async {
@@ -794,160 +812,145 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     _buildContext = context;
-    // Initialize services with the current context if they haven't been initialized yet
     _bookService ??= BookService(context);
-    _listManager ??= ListManager(context);
-    _listManager?.loadExpandedStates();
 
-    final user = FirebaseAuth.instance.currentUser;
-    print(
-        'Building HomeScreen for user: ${user?.email ?? "No user"}, UID: ${user?.uid ?? "No UID"}');
-    print(
-        'Selected List: $_selectedListName, ID: $_selectedListId, Sort: $_sortPreference');
-    return WillPopScope(
-      onWillPop: () async {
-        final now = DateTime.now();
-        if (_lastBackPressTime == null ||
-            now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
-          _lastBackPressTime = now;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Press back again to exit'),
-              duration: Duration(seconds: 2),
+    if (_listManagerInitialization == null) {
+      _listManagerInitialization = _initializeListManager(context);
+    }
+
+    return FutureBuilder<void>(
+      future: _listManagerInitialization,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done ||
+            !_isExpandedStatesLoaded ||
+            _isLoading) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(),
             ),
           );
-          return false;
         }
-        return true;
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: PopupMenuButton<String>(
-            onSelected: (value) async {
-              if (value == 'add_list' && mounted) {
-                print('Add new list selected');
-                await _addNewList(context);
-              }
-            },
-            itemBuilder: (BuildContext popupContext) => [
-              PopupMenuItem<String>(
-                value: 'add_list',
-                child: Row(
-                  children: const [
-                    Icon(Icons.add),
-                    SizedBox(width: 8),
-                    Text('Add New List'),
-                  ],
+
+        final user = FirebaseAuth.instance.currentUser;
+        print(
+            'Building HomeScreen for user: ${user?.email ?? "No user"}, UID: ${user?.uid ?? "No UID"}');
+        print(
+            'Selected List: $_selectedListName, ID: $_selectedListId, Sort: $_sortPreference');
+
+        return WillPopScope(
+          onWillPop: () async {
+            final now = DateTime.now();
+            if (_lastBackPressTime == null ||
+                now.difference(_lastBackPressTime!) >
+                    const Duration(seconds: 2)) {
+              _lastBackPressTime = now;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Press back again to exit'),
+                  duration: Duration(seconds: 2),
                 ),
-              ),
-              const PopupMenuDivider(),
-              ..._buildListMenuItems(context),
-            ],
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(_selectedListName),
-                const Icon(Icons.arrow_drop_down, size: 20),
-              ],
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            offset: const Offset(0, 40),
-            constraints: BoxConstraints(
-              minWidth: MediaQuery.of(context).size.width,
-              maxWidth: MediaQuery.of(context).size.width,
-            ),
-          ),
-          actions: [
-            PopupMenuButton<String>(
-              icon: _isProfileImageLoading
-                  ? const CircleAvatar(
-                      radius: 18,
-                      child: CircularProgressIndicator(),
-                    )
-                  : CircleAvatar(
-                      radius: 18,
-                      backgroundImage: _cachedProfileImage != null
-                          ? MemoryImage(base64Decode(_cachedProfileImage!))
-                              as ImageProvider
-                          : null,
-                      child: _cachedProfileImage == null
-                          ? const Icon(Icons.person)
-                          : null,
-                    ),
-              onSelected: (String value) {
-                if (value == 'profile') {
-                  Navigator.pushNamed(context, '/profile');
-                } else if (value == 'settings') {
-                  Navigator.pushNamed(context, '/settings');
-                }
-              },
-              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                const PopupMenuItem<String>(
-                  value: 'profile',
-                  child: Row(
-                    children: [
-                      Icon(Icons.person),
-                      SizedBox(width: 8),
-                      Text('Go to Profile'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem<String>(
-                  value: 'settings',
-                  child: Row(
-                    children: [
-                      Icon(Icons.settings),
-                      SizedBox(width: 8),
-                      Text('Settings'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _errorMessage != null
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(_errorMessage!),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: () {
-                            if (mounted) {
-                              _initializeDefaultList();
-                            }
-                          },
-                          child: const Text('Retry'),
-                        ),
-                        const SizedBox(height: 8),
-                        TextButton(
-                          onPressed: () async {
-                            if (mounted) {
-                              print('Signing out due to error');
-                              await FirebaseAuth.instance.signOut();
-                              await FirebaseAuth.instance
-                                  .setPersistence(Persistence.NONE);
-                              print('Signed out and cleared persistence');
-                            }
-                          },
-                          child: const Text('Sign Out'),
-                        ),
+              );
+              return false;
+            }
+            return true;
+          },
+          child: Scaffold(
+            appBar: AppBar(
+              title: PopupMenuButton<String>(
+                onSelected: (value) async {
+                  if (value == 'add_list' && mounted) {
+                    print('Add new list selected');
+                    await _addNewList(context);
+                  }
+                },
+                itemBuilder: (BuildContext popupContext) => [
+                  PopupMenuItem<String>(
+                    value: 'add_list',
+                    child: Row(
+                      children: const [
+                        Icon(Icons.add),
+                        SizedBox(width: 8),
+                        Text('Add New List'),
                       ],
                     ),
-                  )
-                : _selectedListId == null
+                  ),
+                  const PopupMenuDivider(),
+                  ..._buildListMenuItems(context),
+                ],
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_selectedListName),
+                    const Icon(Icons.arrow_drop_down, size: 20),
+                  ],
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                offset: const Offset(0, 40),
+                constraints: BoxConstraints(
+                  minWidth: MediaQuery.of(context).size.width,
+                  maxWidth: MediaQuery.of(context).size.width,
+                ),
+              ),
+              actions: [
+                PopupMenuButton<String>(
+                  icon: _isProfileImageLoading
+                      ? const CircleAvatar(
+                          radius: 18,
+                          child: CircularProgressIndicator(),
+                        )
+                      : CircleAvatar(
+                          radius: 18,
+                          backgroundImage: _cachedProfileImage != null
+                              ? MemoryImage(base64Decode(_cachedProfileImage!))
+                                  as ImageProvider
+                              : null,
+                          child: _cachedProfileImage == null
+                              ? const Icon(Icons.person)
+                              : null,
+                        ),
+                  onSelected: (String value) {
+                    if (value == 'profile') {
+                      Navigator.pushNamed(context, '/profile');
+                    } else if (value == 'settings') {
+                      Navigator.pushNamed(context, '/settings');
+                    }
+                  },
+                  itemBuilder: (BuildContext context) =>
+                      <PopupMenuEntry<String>>[
+                    const PopupMenuItem<String>(
+                      value: 'profile',
+                      child: Row(
+                        children: [
+                          Icon(Icons.person),
+                          SizedBox(width: 8),
+                          Text('Go to Profile'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: 'settings',
+                      child: Row(
+                        children: [
+                          Icon(Icons.settings),
+                          SizedBox(width: 8),
+                          Text('Settings'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            body: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _errorMessage != null
                     ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Text(
-                                'Failed to load list. Please try again.'),
+                            Text(_errorMessage!),
                             const SizedBox(height: 16),
                             ElevatedButton(
                               onPressed: () {
@@ -961,7 +964,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             TextButton(
                               onPressed: () async {
                                 if (mounted) {
-                                  print('Signing out due to null list ID');
+                                  print('Signing out due to error');
                                   await FirebaseAuth.instance.signOut();
                                   await FirebaseAuth.instance
                                       .setPersistence(Persistence.NONE);
@@ -973,189 +976,231 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ],
                         ),
                       )
-                    : StreamBuilder<QuerySnapshot>(
-                        stream: _selectedListName == 'Home'
-                            ? FirebaseFirestore.instance
-                                .collectionGroup('books')
-                                .where('userId', isEqualTo: user!.uid)
-                                .orderBy('createdAt', descending: true)
-                                .snapshots()
-                            : FirebaseFirestore.instance
-                                .collection('users')
-                                .doc(user!.uid)
-                                .collection('lists')
-                                .doc(_selectedListId)
-                                .collection('books')
-                                .orderBy('createdAt', descending: true)
-                                .snapshots(),
-                        builder: (context, snapshot) {
-                          if (snapshot.hasError) {
-                            return Center(
-                              child: Text('Error: ${snapshot.error}'),
-                            );
-                          }
-
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Center(
-                                child: CircularProgressIndicator());
-                          }
-
-                          final books = snapshot.data?.docs ?? [];
-                          if (books.isEmpty) {
-                            return const Center(child: Text('No books found'));
-                          }
-
-                          final groupedBooks = <String, List<BookWithList>>{};
-                          for (var doc in books) {
-                            final data = doc.data() as Map<String, dynamic>;
-                            final book = Book(
-                              title:
-                                  data['title']?.toString() ?? 'Unknown Title',
-                              authors: (data['authors'] as List<dynamic>?)
-                                      ?.cast<String>() ??
-                                  [],
-                              description:
-                                  data['description']?.toString() ?? '',
-                              imageUrl: data['imageUrl']?.toString(),
-                              isbn: data['isbn']?.toString() ?? '',
-                              publishedDate: data['publishedDate']?.toString(),
-                              publisher: data['publisher']?.toString(),
-                              pageCount: data['pageCount'] as int?,
-                              categories: (data['categories'] as List<dynamic>?)
-                                      ?.cast<String>() ??
-                                  [],
-                              tags: (data['tags'] as List<dynamic>?)
-                                      ?.cast<String>() ??
-                                  [],
-                            );
-
-                            String listName = 'Unknown List';
-                            String listId = '';
-
-                            if (_selectedListName == 'Home') {
-                              final path = doc.reference.path;
-                              final parts = path.split('/');
-                              if (parts.length >= 4) {
-                                listId = parts[3];
-                                listName =
-                                    _listNamesCache[listId] ?? 'Unknown List';
-                              }
-                            } else {
-                              listId = _selectedListId!;
-                              listName = _selectedListName;
-                            }
-
-                            print('Processing book: ${book.title}');
-                            print(
-                                'Book ${book.title} belongs to list: $listName (ID: $listId)');
-                            print('Book data: $data');
-
-                            groupedBooks
-                                .putIfAbsent(listName, () => [])
-                                .add(BookWithList(
-                                  book: book,
-                                  listId: listId,
-                                  listName: listName,
-                                ));
-                          }
-
-                          final sortedListNames = groupedBooks.keys.toList()
-                            ..sort();
-                          final displayItems = <dynamic>[];
-                          for (var listName in sortedListNames) {
-                            displayItems.add(listName);
-                            if (_listManager?.expandedLists[listName] ?? true) {
-                              displayItems.addAll(groupedBooks[listName]!);
-                            }
-                          }
-
-                          return ListView.builder(
-                            itemCount: displayItems.length,
-                            itemBuilder: (BuildContext listContext, int index) {
-                              final item = displayItems[index];
-                              if (item is String) {
-                                final listName = item;
-                                final bookCount =
-                                    groupedBooks[listName]?.length ?? 0;
-                                final isExpanded =
-                                    _listManager?.expandedLists[listName] ??
-                                        true;
-                                final animation = _listManager
-                                        ?.getAnimationForList(listName, this) ??
-                                    AlwaysStoppedAnimation(1.0);
-
-                                return ListItem(
-                                  listName: listName,
-                                  bookCount: bookCount,
-                                  books: groupedBooks[listName],
-                                  isExpanded: isExpanded,
-                                  animation: animation,
-                                  accentColor: widget.accentColor,
-                                  onToggleExpanded: (name) => _listManager
-                                      ?.toggleListExpanded(name, this),
-                                  onBookTap: _onBookTap,
+                    : _selectedListId == null
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Text(
+                                    'Failed to load list. Please try again.'),
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    if (mounted) {
+                                      _initializeDefaultList();
+                                    }
+                                  },
+                                  child: const Text('Retry'),
+                                ),
+                                const SizedBox(height: 8),
+                                TextButton(
+                                  onPressed: () async {
+                                    if (mounted) {
+                                      print('Signing out due to null list ID');
+                                      await FirebaseAuth.instance.signOut();
+                                      await FirebaseAuth.instance
+                                          .setPersistence(Persistence.NONE);
+                                      print(
+                                          'Signed out and cleared persistence');
+                                    }
+                                  },
+                                  child: const Text('Sign Out'),
+                                ),
+                              ],
+                            ),
+                          )
+                        : StreamBuilder<QuerySnapshot>(
+                            stream: _selectedListName == 'Home'
+                                ? FirebaseFirestore.instance
+                                    .collectionGroup('books')
+                                    .where('userId', isEqualTo: user!.uid)
+                                    .orderBy('createdAt', descending: true)
+                                    .snapshots()
+                                : FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(user!.uid)
+                                    .collection('lists')
+                                    .doc(_selectedListId)
+                                    .collection('books')
+                                    .orderBy('createdAt', descending: true)
+                                    .snapshots(),
+                            builder: (context, snapshot) {
+                              if (snapshot.hasError) {
+                                return Center(
+                                  child: Text('Error: ${snapshot.error}'),
                                 );
                               }
-                              return const SizedBox.shrink();
+
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return const Center(
+                                    child: CircularProgressIndicator());
+                              }
+
+                              final books = snapshot.data?.docs ?? [];
+                              if (books.isEmpty) {
+                                return const Center(
+                                    child: Text('No books found'));
+                              }
+
+                              final groupedBooks =
+                                  <String, List<BookWithList>>{};
+                              for (var doc in books) {
+                                final data = doc.data() as Map<String, dynamic>;
+                                final book = Book(
+                                  title: data['title']?.toString() ??
+                                      'Unknown Title',
+                                  authors: (data['authors'] as List<dynamic>?)
+                                          ?.cast<String>() ??
+                                      [],
+                                  description:
+                                      data['description']?.toString() ?? '',
+                                  imageUrl: data['imageUrl']?.toString(),
+                                  isbn: data['isbn']?.toString() ?? '',
+                                  publishedDate:
+                                      data['publishedDate']?.toString(),
+                                  publisher: data['publisher']?.toString(),
+                                  pageCount: data['pageCount'] as int?,
+                                  categories:
+                                      (data['categories'] as List<dynamic>?)
+                                              ?.cast<String>() ??
+                                          [],
+                                  tags: (data['tags'] as List<dynamic>?)
+                                          ?.cast<String>() ??
+                                      [],
+                                );
+
+                                String listName = 'Unknown List';
+                                String listId = '';
+
+                                if (_selectedListName == 'Home') {
+                                  final path = doc.reference.path;
+                                  final parts = path.split('/');
+                                  if (parts.length >= 4) {
+                                    listId = parts[3];
+                                    listName = _listNamesCache[listId] ??
+                                        'Unknown List';
+                                  }
+                                } else {
+                                  listId = _selectedListId!;
+                                  listName = _selectedListName;
+                                }
+
+                                print('Processing book: ${book.title}');
+                                print(
+                                    'Book ${book.title} belongs to list: $listName (ID: $listId)');
+                                print('Book data: $data');
+
+                                groupedBooks
+                                    .putIfAbsent(listName, () => [])
+                                    .add(BookWithList(
+                                      book: book,
+                                      listId: listId,
+                                      listName: listName,
+                                    ));
+                              }
+
+                              final sortedListNames = groupedBooks.keys.toList()
+                                ..sort();
+                              final displayItems = <dynamic>[];
+                              for (var listName in sortedListNames) {
+                                displayItems.add(listName);
+                                if (_listManager?.expandedLists[listName] ??
+                                    true) {
+                                  displayItems.addAll(groupedBooks[listName]!);
+                                }
+                              }
+
+                              return ListView.builder(
+                                itemCount: displayItems.length,
+                                itemBuilder:
+                                    (BuildContext listContext, int index) {
+                                  final item = displayItems[index];
+                                  if (item is String) {
+                                    final listName = item;
+                                    final bookCount =
+                                        groupedBooks[listName]?.length ?? 0;
+                                    final isExpanded =
+                                        _listManager?.expandedLists[listName] ??
+                                            true;
+                                    final animation =
+                                        _listManager?.getAnimationForList(
+                                                listName, this) ??
+                                            AlwaysStoppedAnimation(1.0);
+
+                                    return ListItem(
+                                      listName: listName,
+                                      bookCount: bookCount,
+                                      books: groupedBooks[listName],
+                                      isExpanded: isExpanded,
+                                      animation: animation,
+                                      accentColor: widget.accentColor,
+                                      onToggleExpanded: (name) => _listManager
+                                          ?.toggleListExpanded(name, this),
+                                      onBookTap: _onBookTap,
+                                    );
+                                  }
+                                  return const SizedBox.shrink();
+                                },
+                              );
                             },
-                          );
-                        },
-                      ),
-        floatingActionButtonLocation: ExpandableFab.location,
-        floatingActionButton: ExpandableFab(
-          key: _fabKey,
-          type: ExpandableFabType.up,
-          distance: 60.0,
-          children: [
-            FloatingActionButton.small(
-              heroTag: 'search_fab',
-              backgroundColor: widget.accentColor.withOpacity(0.8),
-              foregroundColor: Colors.white,
-              onPressed: () {
-                print('Search FAB pressed');
-                final state = _fabKey.currentState;
-                if (state != null && state.isOpen) {
-                  print('Toggling FAB closed');
-                  state.toggle();
-                }
-                BookSearchSheet.show(
-                    context, _selectedListId, _selectedListName, _bookService!);
-              },
-              child: const Icon(Icons.search),
-              tooltip: 'Search by Title or ISBN',
+                          ),
+            floatingActionButtonLocation: ExpandableFab.location,
+            floatingActionButton: ExpandableFab(
+              key: _fabKey,
+              type: ExpandableFabType.up,
+              distance: 60.0,
+              children: [
+                FloatingActionButton.small(
+                  heroTag: 'search_fab',
+                  backgroundColor: widget.accentColor.withOpacity(0.8),
+                  foregroundColor: Colors.white,
+                  onPressed: () {
+                    print('Search FAB pressed');
+                    final state = _fabKey.currentState;
+                    if (state != null && state.isOpen) {
+                      print('Toggling FAB closed');
+                      state.toggle();
+                    }
+                    BookSearchSheet.show(context, _selectedListId,
+                        _selectedListName, _bookService!);
+                  },
+                  child: const Icon(Icons.search),
+                  tooltip: 'Search by Title or ISBN',
+                ),
+                FloatingActionButton.small(
+                  heroTag: 'scan_fab',
+                  backgroundColor: widget.accentColor.withOpacity(0.8),
+                  foregroundColor: Colors.white,
+                  onPressed: () {
+                    print('Scan FAB pressed');
+                    final state = _fabKey.currentState;
+                    if (state != null && state.isOpen) {
+                      print('Toggling FAB closed');
+                      state.toggle();
+                    }
+                    scanBarcode();
+                  },
+                  child: const Icon(Icons.camera_alt),
+                  tooltip: 'Scan ISBN',
+                ),
+              ],
+              openButtonBuilder: RotateFloatingActionButtonBuilder(
+                child: const Icon(Icons.add),
+                foregroundColor: Colors.white,
+                backgroundColor: widget.accentColor,
+                shape: const CircleBorder(),
+              ),
+              closeButtonBuilder: DefaultFloatingActionButtonBuilder(
+                child: const Icon(Icons.close),
+                foregroundColor: Colors.white,
+                backgroundColor: widget.accentColor,
+                shape: const CircleBorder(),
+              ),
             ),
-            FloatingActionButton.small(
-              heroTag: 'scan_fab',
-              backgroundColor: widget.accentColor.withOpacity(0.8),
-              foregroundColor: Colors.white,
-              onPressed: () {
-                print('Scan FAB pressed');
-                final state = _fabKey.currentState;
-                if (state != null && state.isOpen) {
-                  print('Toggling FAB closed');
-                  state.toggle();
-                }
-                scanBarcode();
-              },
-              child: const Icon(Icons.camera_alt),
-              tooltip: 'Scan ISBN',
-            ),
-          ],
-          openButtonBuilder: RotateFloatingActionButtonBuilder(
-            child: const Icon(Icons.add),
-            foregroundColor: Colors.white,
-            backgroundColor: widget.accentColor,
-            shape: const CircleBorder(),
           ),
-          closeButtonBuilder: DefaultFloatingActionButtonBuilder(
-            child: const Icon(Icons.close),
-            foregroundColor: Colors.white,
-            backgroundColor: widget.accentColor,
-            shape: const CircleBorder(),
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 
