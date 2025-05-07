@@ -1284,24 +1284,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             floatingActionButton: ExpandableFab(
               key: _fabKey,
               type: ExpandableFabType.up,
-              distance: 60.0,
+              distance: 70.0,
               children: [
-                FloatingActionButton.small(
-                  heroTag: 'search_fab',
-                  backgroundColor: widget.accentColor.withOpacity(0.8),
-                  foregroundColor: Colors.white,
-                  onPressed: () {
-                    print('Search FAB pressed');
-                    final state = _fabKey.currentState;
-                    if (state != null && state.isOpen) {
-                      print('Toggling FAB closed');
-                      state.toggle();
-                    }
-                    BookSearchSheet.show(context, _selectedListId,
-                        _selectedListName, _bookService!);
-                  },
-                  child: const Icon(Icons.search),
-                  tooltip: 'Search by Title or ISBN',
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: FloatingActionButton.small(
+                    heroTag: 'search_fab',
+                    backgroundColor: widget.accentColor.withOpacity(0.8),
+                    foregroundColor: Colors.white,
+                    onPressed: () {
+                      print('Search FAB pressed');
+                      final state = _fabKey.currentState;
+                      if (state != null && state.isOpen) {
+                        print('Toggling FAB closed');
+                        state.toggle();
+                      }
+                      BookSearchSheet.show(context, _selectedListId,
+                          _selectedListName, _bookService!);
+                    },
+                    child: const Icon(Icons.search),
+                    tooltip: 'Search by Title or ISBN',
+                  ),
                 ),
                 FloatingActionButton.small(
                   heroTag: 'scan_fab',
