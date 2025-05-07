@@ -15,10 +15,10 @@ See the releases page for the latest version. Currently only android is supporte
 - [x] Add books to lists
   - [x] Add by name/isbn
   - [x] Add by text recognition to scan isbn
-  - [ ] Share books with other users
-- [ ] Friends list
-  - [ ] Add/Delete Friends
-  - [ ] Profiles per user
+  - [x] Share books with other users
+- [x] Friends list
+  - [x] Add/Delete Friends
+  - [x] Profiles per user
   - [x] Username's on sign up
 - [x] Create custom lists
   - [x] Expand/Collapse lists
@@ -26,17 +26,18 @@ See the releases page for the latest version. Currently only android is supporte
   - [x] Delete from list
   - [x] Delete lists
 - [ ] Card Views
-  - [ ] Go to series/go to author
-  - [ ] Add links to Google Play Books, Amazon, AbeBooks with price
-  - [ ] Add share button (generates link to isbnsearch.org for now)
-  - [ ] Mark book as read (for statistics)
+  - [x] Go go to author
+  - [ ] Go to series
+  - [x] Add links to Google Play Books, Amazon, AbeBooks with price
+  - [x] Add share by link button
+  - [x] Mark book as read (for statistics)
   - [x] Swipe down on card to dismiss
   - [x] Add user rating
 - [ ] Settings
   - [ ] Theme Mode (switch to toggles again before marking this off)
   - [x] Accent Color selector
   - [x] Book List Order
-  - [ ] Total Books
+  - [x] Total Books
   - [x] Books Read
   - [ ] Stats Page
     - [x] Reading Progress
