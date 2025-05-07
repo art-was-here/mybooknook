@@ -6,69 +6,42 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/settings.dart' as app_settings;
 import 'dart:convert';
-import 'package:share_plus/share_plus.dart';
-import 'package:http/http.dart' as http;
-import 'scan_book_details_card.dart';
+import 'select_list.dart' show SelectListDialog;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'author_details_card.dart';
 
-class BookDetailsCard extends StatefulWidget {
+class ScanBookDetailsCard extends StatefulWidget {
   final Book book;
-  final String listName;
   final BookService bookService;
-  final String? listId;
-  final Function(String)? onAddToList;
-  final Map<String, String>? lists;
-  final String? actualListId;
+  final Map<String, String> lists;
+  final VoidCallback? onClose;
 
-  const BookDetailsCard({
+  const ScanBookDetailsCard({
     super.key,
     required this.book,
-    required this.listName,
     required this.bookService,
-    this.listId,
-    this.onAddToList,
-    this.lists,
-    this.actualListId,
+    required this.lists,
+    this.onClose,
   });
 
-  static void show(BuildContext context, Book book, String listName,
-      BookService bookService, String? listId,
-      {String? actualListId}) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (BuildContext sheetContext) {
-        return BookDetailsCard(
-          book: book,
-          listName: listName,
-          bookService: bookService,
-          listId: listId,
-          actualListId: actualListId,
-        );
-      },
-    );
-  }
-
   @override
-  State<BookDetailsCard> createState() => _BookDetailsCardState();
+  _ScanBookDetailsCardState createState() => _ScanBookDetailsCardState();
 }
 
-class _BookDetailsCardState extends State<BookDetailsCard> {
-  final ScrollController scrollController = ScrollController();
-  bool _isExpanded = false;
-  double _userRating = 0;
+class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
+  String? _selectedListId;
+  String? _selectedListName;
   bool _isDescriptionExpanded = false;
   ScrollController? _scrollController;
   bool _canDismiss = false;
+  double _userRating = 0.0;
   bool _isRead = false;
   bool _isFavorite = false;
 
   @override
   void initState() {
     super.initState();
-    _userRating = widget.book.userRating ?? 0;
     _scrollController = ScrollController();
     _scrollController?.addListener(_handleScroll);
     _loadReadingStatus();
@@ -77,18 +50,9 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
 
   @override
   void dispose() {
-    scrollController.removeListener(_onScroll);
-    scrollController.dispose();
     _scrollController?.removeListener(_handleScroll);
     _scrollController?.dispose();
     super.dispose();
-  }
-
-  void _onScroll() {
-    if (scrollController.position.pixels <= 0) {
-      // Allow dismissal when at the top
-      Navigator.of(context).pop();
-    }
   }
 
   void _handleScroll() {
@@ -100,6 +64,125 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
       setState(() {
         _canDismiss = false;
       });
+    }
+  }
+
+  void _handleClose() {
+    if (widget.onClose != null) {
+      widget.onClose!();
+    }
+    if (context.mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _showListSelectionDialog() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final listsSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('lists')
+          .where('name', isNotEqualTo: 'Home')
+          .get();
+
+      final lists = listsSnapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'name': data['name'] as String? ?? 'Unknown List',
+        };
+      }).toList();
+
+      if (!mounted) return;
+
+      final selectedList = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: const Text('Select List'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: lists.length,
+              itemBuilder: (context, index) {
+                final list = lists[index];
+                return ListTile(
+                  title: Text(list['name']!),
+                  onTap: () => Navigator.pop(dialogContext, list),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      );
+
+      if (selectedList != null) {
+        setState(() {
+          _selectedListId = selectedList['id'];
+          _selectedListName = selectedList['name'];
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading lists: $e')),
+      );
+    }
+  }
+
+  Future<void> _saveBook() async {
+    if (_selectedListId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a list first')),
+      );
+      return;
+    }
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('lists')
+          .doc(_selectedListId)
+          .collection('books')
+          .doc(widget.book.isbn)
+          .set({
+        'title': widget.book.title,
+        'authors': widget.book.authors,
+        'description': widget.book.description,
+        'imageUrl': widget.book.imageUrl,
+        'isbn': widget.book.isbn,
+        'publishedDate': widget.book.publishedDate,
+        'publisher': widget.book.publisher,
+        'pageCount': widget.book.pageCount,
+        'categories': widget.book.categories,
+        'tags': widget.book.tags,
+        'userId': user.uid,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Book saved to $_selectedListName')),
+      );
+      _handleClose();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error saving book: $e')),
+      );
     }
   }
 
@@ -154,39 +237,10 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
     }
   }
 
-  Future<void> _updateUserRating(BuildContext context, double rating) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      final bookRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('lists')
-          .doc(widget.listId)
-          .collection('books')
-          .doc(widget.book.isbn);
-
-      await bookRef.update({
-        'userRating': rating,
-      });
-
-      setState(() {
-        _userRating = rating;
-      });
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Rating updated')),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating rating: $e')),
-        );
-      }
-    }
+  void _updateUserRating(BuildContext context, double rating) {
+    setState(() {
+      _userRating = rating;
+    });
   }
 
   Future<void> _loadReadingStatus() async {
@@ -233,7 +287,7 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
         await bookRef.set({
           ...widget.book.toMap(),
           'isFavorite': true,
-          'listId': widget.listId,
+          'listId': _selectedListId,
         }, SetOptions(merge: true));
       }
 
@@ -253,7 +307,7 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
           'authors': widget.book.authors,
           'imageUrl': widget.book.imageUrl,
           'isbn': widget.book.isbn,
-          'listId': widget.listId,
+          'listId': _selectedListId,
         });
       }
 
@@ -277,230 +331,6 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error updating favorite status: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _shareBook() async {
-    try {
-      // Create a URL with just the ISBN
-      final longUrl =
-          'https://mybooknook-5ca64.web.app/book?isbn=${widget.book.isbn}';
-
-      // Use is.gd to create a short URL
-      final response = await http.get(
-        Uri.parse(
-            'https://is.gd/create.php?format=json&url=${Uri.encodeComponent(longUrl)}'),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final shortUrl = data['shorturl'];
-
-        if (shortUrl != null) {
-          await Share.share(
-            'Check out ${widget.book.title} on MyBookNook!\n$shortUrl',
-          );
-        } else {
-          throw Exception('Failed to get short URL');
-        }
-      } else {
-        throw Exception('Failed to create short URL');
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error sharing book: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _showFriendSelection() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-
-      // Get all friends first to debug the structure
-      final friendsSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('friends')
-          .get();
-
-      // Debug print to check the friends data
-      print('Found ${friendsSnapshot.docs.length} total friends');
-      for (var doc in friendsSnapshot.docs) {
-        print('Friend document ID: ${doc.id}');
-        print('Friend data: ${doc.data()}');
-        print('Friend data keys: ${doc.data().keys.toList()}');
-      }
-
-      if (!mounted) return;
-
-      if (friendsSnapshot.docs.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('You don\'t have any friends yet'),
-          ),
-        );
-        return;
-      }
-
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        builder: (BuildContext context) {
-          return DraggableScrollableSheet(
-            initialChildSize: 0.7,
-            minChildSize: 0.5,
-            maxChildSize: 0.95,
-            expand: false,
-            builder: (context, scrollController) {
-              return Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(20)),
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Center(
-                            child: Container(
-                              width: 40,
-                              height: 4,
-                              margin: const EdgeInsets.only(bottom: 16),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).dividerColor,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                          ),
-                          Text(
-                            'Send to Friend',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Select a friend to share "${widget.book.title}" with',
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        controller: scrollController,
-                        itemCount: friendsSnapshot.docs.length,
-                        itemBuilder: (context, index) {
-                          final friend = friendsSnapshot.docs[index];
-                          final friendData = friend.data();
-                          print('Building list item for friend: $friendData');
-
-                          return ListTile(
-                            leading: CircleAvatar(
-                              child: Text(
-                                friendData['username']?[0]?.toUpperCase() ??
-                                    '?',
-                              ),
-                            ),
-                            title:
-                                Text('@${friendData['username'] ?? 'Unknown'}'),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.send),
-                              onPressed: () async {
-                                try {
-                                  // Get current user's username
-                                  final currentUserDoc = await FirebaseFirestore
-                                      .instance
-                                      .collection('users')
-                                      .doc(user.uid)
-                                      .get();
-                                  final currentUsername =
-                                      currentUserDoc.data()?['username'] ??
-                                          'Unknown User';
-
-                                  // Create notification data
-                                  final notificationData = {
-                                    'type': 'book_share',
-                                    'title': 'Book Shared',
-                                    'message':
-                                        '@$currentUsername shared "${widget.book.title}" with you',
-                                    'timestamp': FieldValue.serverTimestamp(),
-                                    'isRead': false,
-                                    'fromUserId': user.uid,
-                                    'fromUsername': currentUsername,
-                                    'toUserId': friend.id,
-                                    'bookTitle': widget.book.title,
-                                    'bookIsbn': widget.book.isbn,
-                                    'action': 'scan_book',
-                                    'actionData': {
-                                      'isbn': widget.book.isbn,
-                                    },
-                                  };
-
-                                  // Use a batch write
-                                  final batch =
-                                      FirebaseFirestore.instance.batch();
-
-                                  // Add the notification
-                                  final notificationRef = FirebaseFirestore
-                                      .instance
-                                      .collection('users')
-                                      .doc(friend.id)
-                                      .collection('notifications')
-                                      .doc();
-
-                                  batch.set(notificationRef, notificationData);
-
-                                  // Commit the batch
-                                  await batch.commit();
-
-                                  if (context.mounted) {
-                                    Navigator.pop(context);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Book shared with @${friendData['username']}',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                } catch (e) {
-                                  print('Error sharing book: $e');
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Error sharing book: $e'),
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
-                            ),
-                            onTap: null, // Disable the entire row tap
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
-      );
-    } catch (e) {
-      print('Error in _showFriendSelection: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading friends: $e')),
         );
       }
     }
@@ -560,6 +390,10 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
+                    ),
+                    Text(
+                      'Book Details',
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ],
                 ),
@@ -687,6 +521,7 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                           ),
                           const SizedBox(height: 16),
                         ],
+                        const SizedBox(height: 16),
                         Text(
                           'Your Rating',
                           style: Theme.of(context).textTheme.titleMedium,
@@ -712,6 +547,36 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                           ],
                         ),
                         const SizedBox(height: 16),
+                        if (widget.book.categories != null &&
+                            widget.book.categories!.isNotEmpty) ...[
+                          Text(
+                            'Categories',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            children: widget.book.categories!
+                                .map((category) => Chip(label: Text(category)))
+                                .toList(),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        if (widget.book.tags != null &&
+                            widget.book.tags!.isNotEmpty) ...[
+                          Text(
+                            'Tags',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            children: widget.book.tags!
+                                .map((tag) => Chip(label: Text(tag)))
+                                .toList(),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         Text(
                           'Reading Status',
                           style: Theme.of(context).textTheme.titleMedium,
@@ -736,50 +601,6 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                             onPressed: _toggleFavorite,
                           ),
                           onTap: _toggleFavorite,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Sharing',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: _shareBook,
-                                  icon: const Icon(Icons.share),
-                                  label: const Text('Share Link'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Theme.of(context)
-                                        .colorScheme
-                                        .primaryContainer,
-                                    foregroundColor: Theme.of(context)
-                                        .colorScheme
-                                        .onPrimaryContainer,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: _showFriendSelection,
-                                  icon: const Icon(Icons.person_add),
-                                  label: const Text('Send to friend'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Theme.of(context)
-                                        .colorScheme
-                                        .primaryContainer,
-                                    foregroundColor: Theme.of(context)
-                                        .colorScheme
-                                        .onPrimaryContainer,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
                         ),
                         const SizedBox(height: 16),
                         Text(
@@ -929,115 +750,45 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 15),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          child: Divider(
-                            color: Theme.of(context).dividerColor,
-                          ),
-                        ),
-                        const SizedBox(height: 15),
-                        SizedBox(
-                          width: double.infinity,
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(5, 0, 5, 10),
-                            child: ElevatedButton(
-                              onPressed: () async {
-                                final shouldDelete = await showDialog<bool>(
-                                  context: context,
-                                  builder: (BuildContext context) {
-                                    return AlertDialog(
-                                      title: const Text('Delete Book'),
-                                      content: Text(
-                                        'Are you sure you want to delete "${widget.book.title}" from ${widget.listName}?',
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.pop(context, false),
-                                          child: const Text('Cancel'),
-                                        ),
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.pop(context, true),
-                                          child: const Text(
-                                            'Delete',
-                                            style: TextStyle(color: Colors.red),
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  },
-                                );
-
-                                if (shouldDelete == true) {
-                                  try {
-                                    final user =
-                                        FirebaseAuth.instance.currentUser;
-                                    if (user == null) return;
-
-                                    // Get the book's actual list ID from the document path
-                                    final bookRef = FirebaseFirestore.instance
-                                        .collection('users')
-                                        .doc(user.uid)
-                                        .collection('lists')
-                                        .doc(widget.actualListId ??
-                                            widget.listId)
-                                        .collection('books')
-                                        .doc(widget.book.isbn);
-
-                                    await bookRef.delete();
-
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'Book deleted from ${widget.listName}',
-                                          ),
-                                        ),
-                                      );
-                                      Navigator.pop(context);
-                                    }
-                                  } catch (e) {
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                          content:
-                                              Text('Error deleting book: $e'),
-                                        ),
-                                      );
-                                    }
-                                  }
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red,
-                                foregroundColor: Colors.white,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              child: const Text(
-                                'Delete Book',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 26),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final selectedList =
+                              await SelectListDialog.show(context, widget.book);
+                          if (selectedList != null) {
+                            _handleClose();
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(50),
+                        ),
+                        child: Text(_selectedListName ?? 'Select List'),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _saveBook,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Theme.of(context).primaryColor,
+                          minimumSize: const Size.fromHeight(50),
+                        ),
+                        child: const Text('Save'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
-
           ),
         ),
       ),

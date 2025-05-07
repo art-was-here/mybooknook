@@ -5,6 +5,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/books/v1.dart';
 import 'package:http/src/client.dart';
 import '../models/book.dart';
+import '../models/settings.dart' as app_settings;
 import 'auth_client.dart';
 
 class BookService {
@@ -46,10 +47,19 @@ class BookService {
       if (e.toString().contains('403') ||
           e.toString().contains('access_denied')) {
         errorMessage =
-            'Access blocked: myBookNook is not verified with Google. Contact the developer to add you as a tester or wait for verification.';
+            'The app is currently in testing mode. Please contact the developer to be added as a test user.';
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMessage)),
+        SnackBar(
+          content: Text(errorMessage),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'OK',
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            },
+          ),
+        ),
       );
       return null;
     }
@@ -163,25 +173,26 @@ class BookService {
           publishedDate: bookData.publishedDate,
           pageCount: bookData.pageCount,
         );
-      }).toList()
-        ..sort((a, b) {
-          // First try to sort by number of ratings (popularity)
-          final aRatingsCount = a.ratingsCount ?? 0;
-          final bRatingsCount = b.ratingsCount ?? 0;
-          if (aRatingsCount != bRatingsCount) {
-            return bRatingsCount.compareTo(aRatingsCount);
-          }
+      }).toList();
 
-          // If ratings counts are equal, sort by average rating
-          final aRating = a.averageRating ?? 0;
-          final bRating = b.averageRating ?? 0;
-          if (aRating != bRating) {
-            return bRating.compareTo(aRating);
-          }
+      results.sort((a, b) {
+        // First try to sort by number of ratings (popularity)
+        final aRatingsCount = a.ratingsCount ?? 0;
+        final bRatingsCount = b.ratingsCount ?? 0;
+        if (aRatingsCount != bRatingsCount) {
+          return bRatingsCount.compareTo(aRatingsCount);
+        }
 
-          // If both ratings are equal, sort by title
-          return a.title.compareTo(b.title);
-        });
+        // If ratings counts are equal, sort by average rating
+        final aRating = a.averageRating ?? 0;
+        final bRating = b.averageRating ?? 0;
+        if (aRating != bRating) {
+          return bRating.compareTo(aRating);
+        }
+
+        // If both ratings are equal, sort by title
+        return a.title.compareTo(b.title);
+      });
 
       return results;
     } catch (e, stackTrace) {
@@ -189,8 +200,23 @@ class BookService {
       print('Stack trace: $stackTrace');
       // Only show snackbar if the widget is still mounted
       if (context.mounted) {
+        String errorMessage = 'Error searching books: $e';
+        if (e.toString().contains('403') ||
+            e.toString().contains('access_denied')) {
+          errorMessage =
+              'The app is currently in testing mode. Please contact the developer to be added as a test user.';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error searching books: $e')),
+          SnackBar(
+            content: Text(errorMessage),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OK',
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ),
+          ),
         );
       }
       return [];
@@ -313,6 +339,13 @@ class BookService {
         });
         print('Book deleted from $selectedListName: $bookTitle');
       }
+
+      // Update total books count
+      final settings = app_settings.Settings();
+      await settings.load();
+      await settings.updateBookCounts(
+          settings.totalBooks - 1, settings.readBooks);
+      await settings.save();
     } catch (e, stackTrace) {
       print('Error deleting book: $e');
       print('Stack trace: $stackTrace');
@@ -320,6 +353,57 @@ class BookService {
       if (e.toString().contains('permission-denied')) {
         errorMessage =
             'Permission denied deleting book. Please sign out and sign in again.';
+      }
+      throw Exception(errorMessage);
+    }
+  }
+
+  Future<void> addBookToList(Book book, String listId) async {
+    print('Adding book to list: ${book.title}, ISBN: ${book.isbn}');
+    final user = FirebaseAuth.instance.currentUser!;
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('lists')
+          .doc(listId)
+          .collection('books')
+          .doc(book.isbn)
+          .set({
+        'title': book.title,
+        'description': book.description,
+        'isbn': book.isbn,
+        'imageUrl': book.imageUrl,
+        'averageRating': book.averageRating,
+        'ratingsCount': book.ratingsCount,
+        'authors': book.authors,
+        'categories': book.categories,
+        'publisher': book.publisher,
+        'publishedDate': book.publishedDate,
+        'pageCount': book.pageCount,
+        'userRating': 0,
+        'userId': user.uid,
+        'createdAt': FieldValue.serverTimestamp(),
+      }).timeout(const Duration(seconds: 5), onTimeout: () {
+        print('Add book timed out');
+        throw Exception('Add book timed out');
+      });
+
+      // Update total books count
+      final settings = app_settings.Settings();
+      await settings.load();
+      await settings.updateBookCounts(
+          settings.totalBooks + 1, settings.readBooks);
+      await settings.save();
+
+      print('Book added to list: ${book.title}');
+    } catch (e, stackTrace) {
+      print('Error adding book: $e');
+      print('Stack trace: $stackTrace');
+      String errorMessage = 'Error adding book: $e';
+      if (e.toString().contains('permission-denied')) {
+        errorMessage =
+            'Permission denied adding book. Please sign out and sign in again.';
       }
       throw Exception(errorMessage);
     }

@@ -1,20 +1,111 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if user owns the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Allow creating and reading user documents
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId);
+    }
+    
+    // Allow access to user's subcollections
     match /users/{userId}/{document=**} {
-      allow read, write, delete: if request.auth != null && request.auth.uid == userId;
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
     }
-    match /{path=**}/books/{bookId} {
-      allow read: if request.auth != null && (
-        // Allow reading books from the user's own lists
-        resource.__name__.matches('^/databases/[^/]+/documents/users/' + request.auth.uid + '/lists/.*/books/.*') ||
-        // Allow reading books where the user is the owner
-        resource.data.userId == request.auth.uid
-      );
-      allow write: if request.auth != null && request.auth.uid == resource.data.userId;
-    }
+    
+    // Allow access to lists and their books
     match /users/{userId}/lists/{listId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
+      
+      match /books/{bookId} {
+        allow read: if isAuthenticated();
+        allow write: if isOwner(userId);
+      }
+    }
+    
+    // Allow access to cached books
+    match /users/{userId}/cachedBooks/{bookId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
+    }
+    
+    // Allow access to books
+    match /{path=**}/books/{bookId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
+    }
+
+    // Allow access to friends collection
+    match /users/{userId}/friends/{friendId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (isOwner(userId) || isOwner(friendId));
+    }
+
+    // Allow access to friend requests
+    match /users/{userId}/friendRequests/{requestId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isOwner(requestId));
+      allow write: if isAuthenticated() && (isOwner(userId) || isOwner(requestId));
+    }
+
+    // Allow access to notifications
+    match /users/{userId}/notifications/{notificationId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow create: if isAuthenticated() && (
+        isOwner(userId) || 
+        (request.resource.data.type == 'friend_request' && request.resource.data.toUserId == userId) ||
+        (request.resource.data.type == 'friend_request_accepted' && request.resource.data.toUserId == userId) ||
+        (request.resource.data.type == 'book_share' && request.resource.data.toUserId == userId && request.resource.data.fromUserId == request.auth.uid)
+      );
+      allow update, delete: if isAuthenticated() && (isOwner(userId) || request.resource.data.fromUserId == request.auth.uid);
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if request.auth != null && (
+        resource.data.receiverUid == request.auth.uid ||
+        resource.data.senderUid == request.auth.uid
+      );
+      allow create: if request.auth != null && 
+        request.resource.data.senderUid == request.auth.uid;
+      allow update: if request.auth != null && 
+        resource.data.receiverUid == request.auth.uid;
+      allow delete: if request.auth != null && (
+        resource.data.receiverUid == request.auth.uid ||
+        resource.data.senderUid == request.auth.uid
+      );
+    }
+  }
+}
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Profile images
+    match /profile_images/{userId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Book covers
+    match /book_covers/{userId}/{bookId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }

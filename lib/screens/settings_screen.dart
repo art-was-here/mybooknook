@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:convert';
 import '../models/settings.dart' as app_settings;
 import '../models/book.dart';
@@ -32,14 +31,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ThemeMode _themeMode = ThemeMode.system;
   Color _selectedAccentColor = Colors.teal;
   String _sortOrder = 'title';
+  Color _accentColor = Colors.teal;
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
-    _loadThemeMode();
-    _loadSortOrder();
     _selectedAccentColor = widget.accentColor;
+    _loadSettings();
   }
 
   Future<void> _loadThemeMode() async {
@@ -54,8 +52,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveThemeMode(ThemeMode mode) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('themeMode', mode.toString().split('.').last);
+    final settings = app_settings.Settings();
+    await settings.load();
+    await settings.updateThemeMode(mode);
     widget.onThemeChanged(mode);
   }
 
@@ -67,8 +66,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveSortOrder(String order) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('sortOrder', order);
+    final settings = app_settings.Settings();
+    await settings.load();
+    await settings.updateSortOrder(order);
     widget.onSortOrderChanged(order);
   }
 
@@ -78,6 +78,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _settings.load();
       if (mounted) {
         setState(() {
+          _themeMode = _settings.themeMode;
+          _accentColor = _settings.accentColor;
+          _selectedAccentColor = _settings.accentColor;
+          _sortOrder = _settings.sortOrder;
           _isLoading = false;
         });
       }
@@ -196,12 +200,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
-        backgroundColor: widget.accentColor,
+        backgroundColor: _accentColor,
+        foregroundColor: Colors.white,
       ),
       body: MediaQuery(
         data: MediaQuery.of(context).copyWith(textScaleFactor: 0.85),
         child: ListView(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 16.0),
           children: [
             Card(
               elevation: 4,
@@ -209,44 +214,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Appearance',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: widget.accentColor,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
                     ),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 15.0),
+                      child: const Divider(height: 1),
+                    ),
                     const SizedBox(height: 16),
                     ListTile(
-                      title: const Text('Theme Mode'),
-                      subtitle: DropdownButton<ThemeMode>(
-                        value: _themeMode,
-                        items: const [
-                          DropdownMenuItem(
-                            value: ThemeMode.system,
-                            child: Text('System'),
-                          ),
-                          DropdownMenuItem(
-                            value: ThemeMode.light,
-                            child: Text('Light'),
-                          ),
-                          DropdownMenuItem(
-                            value: ThemeMode.dark,
-                            child: Text('Dark'),
-                          ),
-                        ],
+                      title: const Text('Follow System Dark Mode'),
+                      trailing: Switch(
+                        value: _themeMode == ThemeMode.system,
+                        activeColor: _accentColor,
                         onChanged: (value) {
-                          if (value != null) {
-                            setState(() {
-                              _themeMode = value;
-                            });
-                            _saveThemeMode(value);
-                          }
+                          setState(() {
+                            _themeMode =
+                                value ? ThemeMode.system : ThemeMode.light;
+                          });
+                          _saveThemeMode(_themeMode);
                         },
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('Dark Mode (Manual)'),
+                      trailing: Switch(
+                        value: _themeMode == ThemeMode.dark,
+                        activeColor: _accentColor,
+                        onChanged: _themeMode == ThemeMode.system
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  _themeMode =
+                                      value ? ThemeMode.dark : ThemeMode.light;
+                                });
+                                _saveThemeMode(_themeMode);
+                              },
                       ),
                     ),
                     ListTile(
@@ -254,10 +265,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       trailing: ColorPickerButton(
                         initialColor: _selectedAccentColor,
                         onColorSelected: (color) {
-                          setState(() {
-                            _selectedAccentColor = color;
-                          });
-                          widget.onAccentColorChanged(color);
+                          _saveAccentColor(color);
                         },
                       ),
                     ),
@@ -312,16 +320,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Reading Statistics',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: widget.accentColor,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
+                    ),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 15.0),
+                      child: const Divider(height: 1),
                     ),
                     const SizedBox(height: 16),
                     ListTile(
@@ -337,9 +349,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: const Text('Reading Progress'),
                       subtitle: LinearProgressIndicator(
                         value: _settings.readingProgress / 100,
-                        backgroundColor: widget.accentColor.withOpacity(0.1),
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(widget.accentColor),
+                        backgroundColor: _accentColor.withOpacity(0.1),
+                        valueColor: AlwaysStoppedAnimation<Color>(_accentColor),
                       ),
                       trailing: Text(
                           '${_settings.readingProgress.toStringAsFixed(1)}%'),
@@ -355,16 +366,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Data Management',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: widget.accentColor,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
+                    ),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 15.0),
+                      child: const Divider(height: 1),
                     ),
                     const SizedBox(height: 16),
                     ListTile(
@@ -422,6 +437,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _saveAccentColor(Color color) async {
+    try {
+      await _settings.updateAccentColor(color);
+      if (mounted) {
+        setState(() {
+          _accentColor = color;
+          _selectedAccentColor = color;
+        });
+        widget.onAccentColorChanged(color);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving accent color: $e')),
+        );
+      }
+    }
   }
 }
 
