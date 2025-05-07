@@ -1,4 +1,4 @@
-<img src="./assets/app_icon.png" alt="myBookNook App Icon" width="50" height="50"/>
+<img src="./assets/app_icon.png" alt="myBookNook App Icon" width="100" height="100"/>
 
 **myBookNook** is a platform designed to help you organize your book collection. Whether you own books or have a wishlist of titles you want to acquire, myBookNook makes it easy to manage them. Using text recognition, you can scan ISBNs to quickly query and store book information.
 
