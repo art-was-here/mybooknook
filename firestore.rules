@@ -66,9 +66,25 @@ service cloud.firestore {
       allow create: if isAuthenticated() && (
         isOwner(userId) || 
         (request.resource.data.type == 'friend_request' && request.resource.data.toUserId == userId) ||
-        (request.resource.data.type == 'friend_request_accepted' && request.resource.data.toUserId == userId)
+        (request.resource.data.type == 'friend_request_accepted' && request.resource.data.toUserId == userId) ||
+        (request.resource.data.type == 'book_share' && request.resource.data.toUserId == userId && request.resource.data.fromUserId == request.auth.uid)
       );
       allow update, delete: if isAuthenticated() && (isOwner(userId) || request.resource.data.fromUserId == request.auth.uid);
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if request.auth != null && (
+        resource.data.receiverUid == request.auth.uid ||
+        resource.data.senderUid == request.auth.uid
+      );
+      allow create: if request.auth != null && 
+        request.resource.data.senderUid == request.auth.uid;
+      allow update: if request.auth != null && 
+        resource.data.receiverUid == request.auth.uid;
+      allow delete: if request.auth != null && (
+        resource.data.receiverUid == request.auth.uid ||
+        resource.data.senderUid == request.auth.uid
+      );
     }
   }
 }

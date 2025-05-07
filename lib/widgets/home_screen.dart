@@ -68,6 +68,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   String? _cachedProfileImage;
   bool _isProfileImageLoading = true;
   Future<void>? _listManagerInitialization;
+  bool _hasUnreadNotifications = false;
+  int _notificationCount = 0;
+  StreamSubscription<QuerySnapshot>? _notificationsSubscription;
 
   // Services
   late final DatabaseService _databaseService;
@@ -85,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _initializeDatabase();
     _ensureIndexes();
     _loadCachedProfileImage();
+    _listenToNotifications();
 
     // Check authentication state immediately
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -460,6 +464,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void dispose() {
     _authSubscription?.cancel();
     _listManager?.dispose();
+    _notificationsSubscription?.cancel();
     print('HomeScreen dispose: Canceled auth subscription and list manager');
     super.dispose();
   }
@@ -923,15 +928,38 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           radius: 18,
                           child: CircularProgressIndicator(),
                         )
-                      : CircleAvatar(
-                          radius: 18,
-                          backgroundImage: _cachedProfileImage != null
-                              ? MemoryImage(base64Decode(_cachedProfileImage!))
-                                  as ImageProvider
-                              : null,
-                          child: _cachedProfileImage == null
-                              ? const Icon(Icons.person)
-                              : null,
+                      : Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 18,
+                              backgroundImage: _cachedProfileImage != null
+                                  ? MemoryImage(
+                                          base64Decode(_cachedProfileImage!))
+                                      as ImageProvider
+                                  : null,
+                              child: _cachedProfileImage == null
+                                  ? const Icon(Icons.person)
+                                  : null,
+                            ),
+                            if (_hasUnreadNotifications)
+                              Positioned(
+                                right: 0,
+                                bottom: 0,
+                                child: Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.error,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Theme.of(context)
+                                          .scaffoldBackgroundColor,
+                                      width: 2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                   onSelected: (String value) {
                     if (value == 'profile') {
@@ -987,6 +1015,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               color: Theme.of(context).colorScheme.primary),
                           const SizedBox(width: 8),
                           const Text('Messages'),
+                          if (_hasUnreadNotifications) ...[
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                _notificationCount > 100
+                                    ? '100+'
+                                    : '$_notificationCount',
+                                style: TextStyle(
+                                  color:
+                                      Theme.of(context).colorScheme.onPrimary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -1672,8 +1722,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           : BookDetailsCard(
               book: book,
               bookService: BookService(modalContext),
-              listId: bookWithList.listId,
-              listName: bookWithList.listName,
+              listId: _selectedListId,
+              listName: _selectedListName,
               actualListId: bookWithList.listId,
             ),
     ).whenComplete(() {
@@ -1774,5 +1824,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ],
       ),
     );
+  }
+
+  void _listenToNotifications() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _notificationsSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('notifications')
+        .where('isRead', isEqualTo: false)
+        .snapshots()
+        .listen((snapshot) {
+      if (mounted) {
+        setState(() {
+          _hasUnreadNotifications = snapshot.docs.isNotEmpty;
+          _notificationCount = snapshot.docs.length;
+        });
+      }
+    });
   }
 }

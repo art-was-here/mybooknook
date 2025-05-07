@@ -317,6 +317,195 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
     }
   }
 
+  Future<void> _showFriendSelection() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      // Get all friends first to debug the structure
+      final friendsSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('friends')
+          .get();
+
+      // Debug print to check the friends data
+      print('Found ${friendsSnapshot.docs.length} total friends');
+      for (var doc in friendsSnapshot.docs) {
+        print('Friend document ID: ${doc.id}');
+        print('Friend data: ${doc.data()}');
+        print('Friend data keys: ${doc.data().keys.toList()}');
+      }
+
+      if (!mounted) return;
+
+      if (friendsSnapshot.docs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You don\'t have any friends yet'),
+          ),
+        );
+        return;
+      }
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (BuildContext context) {
+          return DraggableScrollableSheet(
+            initialChildSize: 0.7,
+            minChildSize: 0.5,
+            maxChildSize: 0.95,
+            expand: false,
+            builder: (context, scrollController) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Center(
+                            child: Container(
+                              width: 40,
+                              height: 4,
+                              margin: const EdgeInsets.only(bottom: 16),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).dividerColor,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                          Text(
+                            'Send to Friend',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Select a friend to share "${widget.book.title}" with',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        controller: scrollController,
+                        itemCount: friendsSnapshot.docs.length,
+                        itemBuilder: (context, index) {
+                          final friend = friendsSnapshot.docs[index];
+                          final friendData = friend.data();
+                          print('Building list item for friend: $friendData');
+
+                          return ListTile(
+                            leading: CircleAvatar(
+                              child: Text(
+                                friendData['username']?[0]?.toUpperCase() ??
+                                    '?',
+                              ),
+                            ),
+                            title:
+                                Text('@${friendData['username'] ?? 'Unknown'}'),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.send),
+                              onPressed: () async {
+                                try {
+                                  // Get current user's username
+                                  final currentUserDoc = await FirebaseFirestore
+                                      .instance
+                                      .collection('users')
+                                      .doc(user.uid)
+                                      .get();
+                                  final currentUsername =
+                                      currentUserDoc.data()?['username'] ??
+                                          'Unknown User';
+
+                                  // Create notification data
+                                  final notificationData = {
+                                    'type': 'book_share',
+                                    'title': 'Book Shared',
+                                    'message':
+                                        '@$currentUsername shared "${widget.book.title}" with you',
+                                    'timestamp': FieldValue.serverTimestamp(),
+                                    'isRead': false,
+                                    'fromUserId': user.uid,
+                                    'fromUsername': currentUsername,
+                                    'toUserId': friend.id,
+                                    'bookTitle': widget.book.title,
+                                    'bookIsbn': widget.book.isbn,
+                                    'action': 'scan_book',
+                                    'actionData': {
+                                      'isbn': widget.book.isbn,
+                                    },
+                                  };
+
+                                  // Use a batch write
+                                  final batch =
+                                      FirebaseFirestore.instance.batch();
+
+                                  // Add the notification
+                                  final notificationRef = FirebaseFirestore
+                                      .instance
+                                      .collection('users')
+                                      .doc(friend.id)
+                                      .collection('notifications')
+                                      .doc();
+
+                                  batch.set(notificationRef, notificationData);
+
+                                  // Commit the batch
+                                  await batch.commit();
+
+                                  if (context.mounted) {
+                                    Navigator.pop(context);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Book shared with @${friendData['username']}',
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  print('Error sharing book: $e');
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Error sharing book: $e'),
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                            ),
+                            onTap: null, // Disable the entire row tap
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      );
+    } catch (e) {
+      print('Error in _showFriendSelection: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading friends: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _launchUrl(String urlString) async {
     final Uri url = Uri.parse(urlString);
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
@@ -498,46 +687,6 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                           ),
                           const SizedBox(height: 16),
                         ],
-                        if (widget.book.categories != null &&
-                            widget.book.categories!.isNotEmpty) ...[
-                          Text(
-                            'Categories',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 8),
-                          Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 16.0),
-                            child: Wrap(
-                              spacing: 8.0,
-                              runSpacing: 4.0,
-                              children: widget.book.categories!.map((category) {
-                                return Chip(
-                                  label: Text(category),
-                                  backgroundColor: Theme.of(context)
-                                      .colorScheme
-                                      .primaryContainer,
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                        if (widget.book.tags != null &&
-                            widget.book.tags!.isNotEmpty) ...[
-                          Text(
-                            'Tags',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            children: widget.book.tags!
-                                .map((tag) => Chip(label: Text(tag)))
-                                .toList(),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
                         Text(
                           'Your Rating',
                           style: Theme.of(context).textTheme.titleMedium,
@@ -589,20 +738,47 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                           onTap: _toggleFavorite,
                         ),
                         const SizedBox(height: 16),
+                        Text(
+                          'Sharing',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                          child: ElevatedButton.icon(
-                            onPressed: _shareBook,
-                            icon: const Icon(Icons.share),
-                            label: const Text('Share Book'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .primaryContainer,
-                              foregroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .onPrimaryContainer,
-                            ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: _shareBook,
+                                  icon: const Icon(Icons.share),
+                                  label: const Text('Share Link'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .primaryContainer,
+                                    foregroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .onPrimaryContainer,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: _showFriendSelection,
+                                  icon: const Icon(Icons.person_add),
+                                  label: const Text('Send to friend'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .primaryContainer,
+                                    foregroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .onPrimaryContainer,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -680,14 +856,17 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                                               BorderRadius.circular(12),
                                         ),
                                       ),
-                                      child: SvgPicture.asset(
-                                        'assets/logos/amazon.svg',
-                                        height: 24,
-                                        width: 24,
-                                        fit: BoxFit.contain,
-                                        placeholderBuilder: (context) =>
-                                            const Icon(Icons.shopping_cart,
-                                                size: 24),
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(top: 5),
+                                        child: SvgPicture.asset(
+                                          'assets/logos/amazon.svg',
+                                          height: 19.2,
+                                          width: 19.2,
+                                          fit: BoxFit.contain,
+                                          placeholderBuilder: (context) =>
+                                              const Icon(Icons.shopping_cart,
+                                                  size: 19.2),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -797,15 +976,17 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                                         FirebaseAuth.instance.currentUser;
                                     if (user == null) return;
 
-                                    await FirebaseFirestore.instance
+                                    // Get the book's actual list ID from the document path
+                                    final bookRef = FirebaseFirestore.instance
                                         .collection('users')
                                         .doc(user.uid)
                                         .collection('lists')
                                         .doc(widget.actualListId ??
                                             widget.listId)
                                         .collection('books')
-                                        .doc(widget.book.isbn)
-                                        .delete();
+                                        .doc(widget.book.isbn);
+
+                                    await bookRef.delete();
 
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context)

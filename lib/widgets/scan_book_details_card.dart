@@ -8,6 +8,8 @@ import '../models/settings.dart' as app_settings;
 import 'dart:convert';
 import 'select_list.dart' show SelectListDialog;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'author_details_card.dart';
 
 class ScanBookDetailsCard extends StatefulWidget {
   final Book book;
@@ -439,11 +441,30 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
                                   ),
                                   if (widget.book.authors != null &&
                                       widget.book.authors!.isNotEmpty)
-                                    Text(
-                                      widget.book.authors!.join(', '),
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium,
+                                    GestureDetector(
+                                      onTap: () {
+                                        showModalBottomSheet(
+                                          context: context,
+                                          isScrollControlled: true,
+                                          builder: (BuildContext context) {
+                                            return AuthorDetailsCard(
+                                              authorName:
+                                                  widget.book.authors!.first,
+                                            );
+                                          },
+                                        );
+                                      },
+                                      child: Text(
+                                        widget.book.authors!.join(', '),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium
+                                            ?.copyWith(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary,
+                                            ),
+                                      ),
                                     ),
                                   if (widget.book.publisher != null)
                                     Text(
@@ -500,6 +521,32 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
                           ),
                           const SizedBox(height: 16),
                         ],
+                        const SizedBox(height: 16),
+                        Text(
+                          'Your Rating',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            ...List.generate(5, (index) {
+                              return IconButton(
+                                icon: Icon(
+                                  index < _userRating
+                                      ? Icons.star
+                                      : Icons.star_border,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                onPressed: () {
+                                  _updateUserRating(context, index + 1.0);
+                                },
+                              );
+                            }),
+                            const SizedBox(width: 8),
+                            Text('${_userRating.toInt()}/5'),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
                         if (widget.book.categories != null &&
                             widget.book.categories!.isNotEmpty) ...[
                           Text(
@@ -531,31 +578,6 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
                           const SizedBox(height: 16),
                         ],
                         Text(
-                          'Your Rating',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            ...List.generate(5, (index) {
-                              return IconButton(
-                                icon: Icon(
-                                  index < _userRating
-                                      ? Icons.star
-                                      : Icons.star_border,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                                onPressed: () {
-                                  _updateUserRating(context, index + 1.0);
-                                },
-                              );
-                            }),
-                            const SizedBox(width: 8),
-                            Text('${_userRating.toInt()}/5'),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
                           'Reading Status',
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
@@ -585,62 +607,149 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
                           'Purchase Book',
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 15),
                         Row(
                           children: [
                             Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  final url =
-                                      'https://books.google.com/books?isbn=${widget.book.isbn}';
-                                  _launchUrl(url);
-                                },
-                                icon: const Icon(Icons.book),
-                                label: const Text('Google Books'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Theme.of(context)
-                                      .colorScheme
-                                      .primaryContainer,
-                                ),
+                              child: Column(
+                                children: [
+                                  SizedBox(
+                                    width: 98,
+                                    height: 48,
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        final url =
+                                            'https://books.google.com/books?isbn=${widget.book.isbn}';
+                                        _launchUrl(url);
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Theme.of(context)
+                                            .colorScheme
+                                            .primaryContainer,
+                                        padding: EdgeInsets.zero,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      child: SvgPicture.asset(
+                                        'assets/logos/google_books.svg',
+                                        height: 24,
+                                        width: 24,
+                                        fit: BoxFit.contain,
+                                        placeholderBuilder: (context) =>
+                                            const Icon(Icons.book, size: 24),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      'Google Books',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  final url =
-                                      'https://www.amazon.com/s?k=${widget.book.isbn}';
-                                  _launchUrl(url);
-                                },
-                                icon: const Icon(Icons.shopping_cart),
-                                label: const Text('Amazon'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Theme.of(context)
-                                      .colorScheme
-                                      .primaryContainer,
-                                ),
+                              child: Column(
+                                children: [
+                                  SizedBox(
+                                    width: 98,
+                                    height: 48,
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        final url =
+                                            'https://www.amazon.com/s?k=${widget.book.isbn}';
+                                        _launchUrl(url);
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Theme.of(context)
+                                            .colorScheme
+                                            .primaryContainer,
+                                        padding: EdgeInsets.zero,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(top: 5),
+                                        child: SvgPicture.asset(
+                                          'assets/logos/amazon.svg',
+                                          height: 19.2,
+                                          width: 19.2,
+                                          fit: BoxFit.contain,
+                                          placeholderBuilder: (context) =>
+                                              const Icon(Icons.shopping_cart,
+                                                  size: 19.2),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      'Amazon',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  final url =
-                                      'https://www.abebooks.com/servlet/SearchResults?isbn=${widget.book.isbn}';
-                                  _launchUrl(url);
-                                },
-                                icon: const Icon(Icons.store),
-                                label: const Text('AbeBooks'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Theme.of(context)
-                                      .colorScheme
-                                      .primaryContainer,
-                                ),
+                              child: Column(
+                                children: [
+                                  SizedBox(
+                                    width: 98,
+                                    height: 48,
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        final url =
+                                            'https://www.abebooks.com/servlet/SearchResults?isbn=${widget.book.isbn}';
+                                        _launchUrl(url);
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Theme.of(context)
+                                            .colorScheme
+                                            .primaryContainer,
+                                        padding: EdgeInsets.zero,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      child: SvgPicture.asset(
+                                        'assets/logos/abebooks.svg',
+                                        height: 24,
+                                        width: 24,
+                                        fit: BoxFit.contain,
+                                        placeholderBuilder: (context) =>
+                                            const Icon(Icons.store, size: 24),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      'AbeBooks',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
                       ],
                     ),
                   ),

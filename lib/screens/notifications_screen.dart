@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'user_page.dart';
 import 'package:flutter/gestures.dart';
+import '../services/book_service.dart';
+import '../widgets/scan_book_details_card.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -119,6 +121,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     switch (notification['type']) {
       case 'friend_request':
         _showFriendRequestDialog(notification);
+        break;
+      case 'book_share':
+        _handleBookShare(notification);
         break;
       // Add other notification types here
     }
@@ -286,6 +291,63 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleBookShare(Map<String, dynamic> notification) async {
+    try {
+      final isbn = notification['bookIsbn'];
+      if (isbn == null) {
+        throw Exception('No ISBN found in notification');
+      }
+
+      // Create BookService instance
+      final bookService = BookService(context);
+
+      // Fetch book details
+      final book = await bookService.fetchBookDetails(isbn);
+      if (book == null) {
+        throw Exception('Book not found');
+      }
+
+      // Get user's lists
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final listsSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('lists')
+          .get();
+
+      final Map<String, String> lists = {};
+      for (var doc in listsSnapshot.docs) {
+        lists[doc.id] = doc.data()['name'] as String;
+      }
+
+      if (!mounted) return;
+
+      // Show the book details card
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (BuildContext context) {
+          return ScanBookDetailsCard(
+            book: book,
+            bookService: bookService,
+            lists: lists,
+            onClose: () {
+              Navigator.pop(context);
+            },
+          );
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error opening book: $e')),
         );
       }
     }
