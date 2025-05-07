@@ -19,6 +19,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _bioController = TextEditingController();
+  final _genreController = TextEditingController();
   final List<String> _selectedGenres = [];
   final List<String> _availableGenres = [
     'Fiction',
@@ -65,6 +66,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _bioController.dispose();
+    _genreController.dispose();
     super.dispose();
   }
 
@@ -689,29 +691,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         title: const Text('Profile'),
         actions: [
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              switch (value) {
-                case 'edit':
-                  _toggleEditMode();
-                  break;
-              }
-            },
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              PopupMenuItem<String>(
-                value: 'edit',
-                child: Row(
-                  children: [
-                    Icon(
-                      _isEditing ? Icons.save : Icons.edit,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(_isEditing ? 'Save' : 'Edit'),
-                  ],
-                ),
-              ),
-            ],
+          IconButton(
+            icon: Icon(_isEditing ? Icons.save : Icons.edit),
+            onPressed: _toggleEditMode,
+            tooltip: _isEditing ? 'Save' : 'Edit Profile',
           ),
         ],
       ),
@@ -896,127 +879,104 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 8),
-                        if (_isEditing) ...[
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextFormField(
-                                  decoration: InputDecoration(
-                                    hintText: 'Add custom genre...',
-                                    hintStyle:
-                                        Theme.of(context).textTheme.bodySmall,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
+                        if (_selectedGenres.isEmpty && !_isEditing)
+                          Center(
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 16.0),
+                              child: Text(
+                                'You don\'t have any favorites set! Edit your profile to add your favorite genres',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          )
+                        else ...[
+                          if (_isEditing) ...[
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _genreController,
+                                    decoration: InputDecoration(
+                                      hintText: 'Add custom genre...',
+                                      hintStyle:
+                                          Theme.of(context).textTheme.bodySmall,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
                                     ),
+                                    onFieldSubmitted: (value) {
+                                      if (value.trim().isNotEmpty &&
+                                          !_availableGenres
+                                              .contains(value.trim())) {
+                                        setState(() {
+                                          _availableGenres.add(value.trim());
+                                          _selectedGenres.add(value.trim());
+                                        });
+                                        _genreController.clear();
+                                      }
+                                    },
                                   ),
-                                  onFieldSubmitted: (value) {
-                                    if (value.trim().isNotEmpty &&
-                                        !_availableGenres
-                                            .contains(value.trim())) {
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.add),
+                                  onPressed: () {
+                                    final genre = _genreController.text.trim();
+                                    if (genre.isNotEmpty &&
+                                        !_availableGenres.contains(genre)) {
                                       setState(() {
-                                        _availableGenres.add(value.trim());
-                                        _selectedGenres.add(value.trim());
+                                        _availableGenres.add(genre);
+                                        _selectedGenres.add(genre);
                                       });
+                                      _genreController.clear();
                                     }
                                   },
                                 ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.add),
-                                onPressed: () {
-                                  final controller = TextEditingController();
-                                  showDialog(
-                                    context: context,
-                                    builder: (context) => AlertDialog(
-                                      title: Text('Add Custom Genre',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .titleMedium),
-                                      content: TextField(
-                                        controller: controller,
-                                        decoration: InputDecoration(
-                                          hintText: 'Enter genre name',
-                                          hintStyle: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall,
-                                          border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                          ),
-                                        ),
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.pop(context),
-                                          child: Text('Cancel',
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .bodyMedium),
-                                        ),
-                                        TextButton(
-                                          onPressed: () {
-                                            final genre =
-                                                controller.text.trim();
-                                            if (genre.isNotEmpty &&
-                                                !_availableGenres
-                                                    .contains(genre)) {
-                                              setState(() {
-                                                _availableGenres.add(genre);
-                                                _selectedGenres.add(genre);
-                                              });
-                                            }
-                                            Navigator.pop(context);
-                                          },
-                                          child: Text('Add',
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .bodyMedium),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                        ],
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: _availableGenres.map((genre) {
-                            final isSelected = _selectedGenres.contains(genre);
-                            return FilterChip(
-                              label: Text(genre,
-                                  style:
-                                      Theme.of(context).textTheme.bodyMedium),
-                              selected: isSelected,
-                              onSelected: _isEditing
-                                  ? (selected) {
-                                      setState(() {
-                                        if (selected) {
-                                          _selectedGenres.add(genre);
-                                        } else {
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: (_isEditing
+                                    ? _availableGenres
+                                    : _selectedGenres)
+                                .map((genre) {
+                              final isSelected =
+                                  _selectedGenres.contains(genre);
+                              return FilterChip(
+                                label: Text(genre,
+                                    style:
+                                        Theme.of(context).textTheme.bodyMedium),
+                                selected: isSelected,
+                                onSelected: _isEditing
+                                    ? (selected) {
+                                        setState(() {
+                                          if (selected) {
+                                            _selectedGenres.add(genre);
+                                          } else {
+                                            _selectedGenres.remove(genre);
+                                          }
+                                        });
+                                      }
+                                    : null,
+                                deleteIcon: _isEditing
+                                    ? const Icon(Icons.close, size: 18)
+                                    : null,
+                                onDeleted: _isEditing
+                                    ? () {
+                                        setState(() {
+                                          _availableGenres.remove(genre);
                                           _selectedGenres.remove(genre);
-                                        }
-                                      });
-                                    }
-                                  : null,
-                              deleteIcon: _isEditing
-                                  ? const Icon(Icons.close, size: 18)
-                                  : null,
-                              onDeleted: _isEditing
-                                  ? () {
-                                      setState(() {
-                                        _availableGenres.remove(genre);
-                                        _selectedGenres.remove(genre);
-                                      });
-                                    }
-                                  : null,
-                            );
-                          }).toList(),
-                        ),
+                                        });
+                                      }
+                                    : null,
+                              );
+                            }).toList(),
+                          ),
+                        ],
                       ],
                     ),
                   ),
