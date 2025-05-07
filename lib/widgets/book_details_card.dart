@@ -1037,6 +1037,7 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                 ),
               ),
             ],
+
           ),
         ),
       ),
