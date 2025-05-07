@@ -5,6 +5,7 @@ import 'dart:convert';
 import '../models/book.dart';
 import '../services/book_service.dart';
 import 'dart:async';
+import '../screens/user_page.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -126,52 +127,85 @@ class _SearchScreenState extends State<SearchScreen>
 
   Future<void> _searchPeople(String query) async {
     if (query.isEmpty) {
-      setState(() {
-        _peopleResults = [];
-      });
+      if (_peopleResults.isNotEmpty) {
+        setState(() {
+          _peopleResults = [];
+        });
+      }
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    // Cancel any existing timer
+    _debounceTimer?.cancel();
 
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-
-      // Search for users by username
-      final snapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('username', isGreaterThanOrEqualTo: query)
-          .where('username', isLessThanOrEqualTo: query + '\uf8ff')
-          .limit(20)
-          .get();
-
-      final people = snapshot.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'uid': doc.id,
-          'username': data['username'] ?? 'Unknown User',
-          'bio': data['bio'] ?? '',
-          'profileImage': data['profileImageBase64'],
-        };
-      }).toList();
+    // Set a new timer
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
+      if (!mounted) return;
 
       setState(() {
-        _peopleResults = people;
-        _isLoading = false;
+        _isLoading = true;
       });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error searching people: $e')),
-        );
+
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) return;
+
+        // Search for users by username
+        final snapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .where('username', isGreaterThanOrEqualTo: query.toLowerCase())
+            .where('username',
+                isLessThanOrEqualTo: query.toLowerCase() + '\uf8ff')
+            .limit(20)
+            .get();
+
+        final newResults = snapshot.docs.map((doc) {
+          final data = doc.data();
+          return {
+            'uid': doc.id,
+            'username': data['username'] ?? 'Unknown User',
+            'bio': data['bio'] ?? '',
+            'profileImage': data['profileImageBase64'],
+            'displayName': data['displayName'] ?? '',
+            'email': data['email'] ?? '',
+          };
+        }).toList();
+
+        // Only update state if the results have changed
+        if (!_arePeopleListsEqual(_peopleResults, newResults)) {
+          if (mounted) {
+            setState(() {
+              _peopleResults = newResults;
+              _isLoading = false;
+            });
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error searching people: $e')),
+          );
+        }
       }
+    });
+  }
+
+  bool _arePeopleListsEqual(
+      List<Map<String, dynamic>> list1, List<Map<String, dynamic>> list2) {
+    if (list1.length != list2.length) return false;
+    for (int i = 0; i < list1.length; i++) {
+      if (list1[i]['uid'] != list2[i]['uid']) return false;
     }
+    return true;
   }
 
   @override
@@ -279,9 +313,29 @@ class _SearchScreenState extends State<SearchScreen>
                                 : null,
                           ),
                           title: Text('@${person['username']}'),
-                          subtitle: Text(person['bio']),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (person['displayName']?.isNotEmpty ?? false)
+                                Text(person['displayName']),
+                              if (person['bio']?.isNotEmpty ?? false)
+                                Text(
+                                  person['bio'],
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          ),
                           onTap: () {
-                            // TODO: Navigate to user profile
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => UserPage(
+                                  userId: person['uid'],
+                                  username: person['username'],
+                                ),
+                              ),
+                            );
                           },
                         );
                       },

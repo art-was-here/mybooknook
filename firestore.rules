@@ -21,33 +21,54 @@ service cloud.firestore {
     
     // Allow access to user's subcollections
     match /users/{userId}/{document=**} {
-      allow read, write: if isOwner(userId);
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
     }
     
     // Allow access to lists and their books
     match /users/{userId}/lists/{listId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
       
       match /books/{bookId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isAuthenticated();
+        allow write: if isOwner(userId);
       }
     }
     
     // Allow access to cached books
     match /users/{userId}/cachedBooks/{bookId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
     }
     
     // Allow access to books
     match /{path=**}/books/{bookId} {
-      allow read: if request.auth != null && (
-        path.matches('users/' + request.auth.uid + '/.*') ||
-        resource.data.userId == request.auth.uid
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
+    }
+
+    // Allow access to friends collection
+    match /users/{userId}/friends/{friendId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (isOwner(userId) || isOwner(friendId));
+    }
+
+    // Allow access to friend requests
+    match /users/{userId}/friendRequests/{requestId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isOwner(requestId));
+      allow write: if isAuthenticated() && (isOwner(userId) || isOwner(requestId));
+    }
+
+    // Allow access to notifications
+    match /users/{userId}/notifications/{notificationId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow create: if isAuthenticated() && (
+        isOwner(userId) || 
+        (request.resource.data.type == 'friend_request' && request.resource.data.toUserId == userId) ||
+        (request.resource.data.type == 'friend_request_accepted' && request.resource.data.toUserId == userId)
       );
-      allow write: if request.auth != null && (
-        path.matches('users/' + request.auth.uid + '/.*') ||
-        request.resource.data.userId == request.auth.uid
-      );
+      allow update, delete: if isAuthenticated() && (isOwner(userId) || request.resource.data.fromUserId == request.auth.uid);
     }
   }
 }

@@ -938,6 +938,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       Navigator.pushNamed(context, '/profile');
                     } else if (value == 'search') {
                       Navigator.pushNamed(context, '/search');
+                    } else if (value == 'notifications') {
+                      Navigator.pushNamed(context, '/notifications');
                     } else if (value == 'settings') {
                       Navigator.pushNamed(context, '/settings');
                     } else if (value == 'logout') {
@@ -955,33 +957,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   itemBuilder: (BuildContext context) =>
                       <PopupMenuEntry<String>>[
-                    const PopupMenuItem<String>(
+                    PopupMenuItem(
                       value: 'profile',
                       child: Row(
                         children: [
-                          Icon(Icons.person),
-                          SizedBox(width: 8),
-                          Text('Go to Profile'),
+                          Icon(Icons.person,
+                              color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 8),
+                          const Text('Go to Profile'),
                         ],
                       ),
                     ),
-                    const PopupMenuItem<String>(
+                    PopupMenuItem(
                       value: 'search',
                       child: Row(
                         children: [
-                          Icon(Icons.search),
-                          SizedBox(width: 8),
-                          Text('Search'),
+                          Icon(Icons.search,
+                              color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 8),
+                          const Text('Search'),
                         ],
                       ),
                     ),
-                    const PopupMenuItem<String>(
+                    PopupMenuItem(
+                      value: 'notifications',
+                      child: Row(
+                        children: [
+                          Icon(Icons.notifications,
+                              color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 8),
+                          const Text('Messages'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
                       value: 'settings',
                       child: Row(
                         children: [
-                          Icon(Icons.settings),
-                          SizedBox(width: 8),
-                          Text('Settings'),
+                          Icon(Icons.settings,
+                              color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 8),
+                          const Text('Settings'),
                         ],
                       ),
                     ),
@@ -994,13 +1010,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         child: Divider(height: 1),
                       ),
                     ),
-                    const PopupMenuItem<String>(
+                    PopupMenuItem<String>(
                       value: 'logout',
                       child: Row(
                         children: [
-                          Icon(Icons.logout),
-                          SizedBox(width: 8),
-                          Text('Logout'),
+                          Icon(Icons.logout,
+                              color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 8),
+                          const Text('Logout'),
                         ],
                       ),
                     ),

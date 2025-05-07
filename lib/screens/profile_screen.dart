@@ -53,6 +53,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<Map<String, dynamic>> _favoriteBooks = [];
   String _username = '';
   DateTime? _birthday;
+  int _friendCount = 0;
 
   @override
   void initState() {
@@ -103,6 +104,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         // Check if we need to update local data
         bool needsUpdate = false;
+
+        // Get friend count
+        final friendsSnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('friends')
+            .get();
+
+        final newFriendCount = friendsSnapshot.docs.length;
+        if (newFriendCount != _friendCount) {
+          _friendCount = newFriendCount;
+          needsUpdate = true;
+        }
 
         // Check profile image
         final newBase64Image = data['profileImageBase64'];
@@ -1017,68 +1031,96 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildProfileHeader() {
     final user = FirebaseAuth.instance.currentUser;
-    final accountCreationTime = user?.metadata.creationTime;
-    final accountAge = accountCreationTime != null
-        ? DateTime.now().difference(accountCreationTime)
+    if (user == null) return const SizedBox.shrink();
+
+    // Calculate account age
+    final accountAge = user.metadata.creationTime != null
+        ? DateTime.now().difference(user.metadata.creationTime!)
         : const Duration();
     final days = accountAge.inDays;
     final hours = accountAge.inHours % 24;
     final minutes = accountAge.inMinutes % 60;
 
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Profile Photo with Edit Button
-        Stack(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              radius: 45,
-              backgroundImage: _base64Image != null
-                  ? MemoryImage(base64Decode(_base64Image!))
-                  : null,
-              child: _base64Image == null
-                  ? const Icon(Icons.person, size: 45)
-                  : null,
-            ),
-            if (_isEditing)
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                    shape: BoxShape.circle,
+            GestureDetector(
+              onTap: _isEditing ? _pickImage : null,
+              child: Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 45,
+                    backgroundImage: _base64Image != null
+                        ? MemoryImage(base64Decode(_base64Image!))
+                        : null,
+                    child: _base64Image == null
+                        ? const Icon(Icons.person, size: 45)
+                        : null,
                   ),
-                  child: IconButton(
-                    icon: const Icon(Icons.camera_alt, color: Colors.white),
-                    onPressed: _pickImage,
-                    tooltip: 'Change profile photo',
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(width: 16),
-        // Username and Account Age
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '@$_username',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontSize:
-                          Theme.of(context).textTheme.headlineSmall!.fontSize! *
-                              0.8,
+                  if (_isEditing)
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
                     ),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Account age: $days days, $hours hours, $minutes minutes',
-                style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '@$_username',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontSize: Theme.of(context)
+                                  .textTheme
+                                  .headlineSmall!
+                                  .fontSize! *
+                              0.8,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Account age: $days days, $hours hours, $minutes minutes',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.people,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$_friendCount ${_friendCount == 1 ? 'Friend' : 'Friends'}',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ],
     );

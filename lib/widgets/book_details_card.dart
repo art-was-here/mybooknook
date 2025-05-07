@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'scan_book_details_card.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'author_details_card.dart';
 
 class BookDetailsCard extends StatefulWidget {
   final Book book;
@@ -417,11 +418,30 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                                   ),
                                   if (widget.book.authors != null &&
                                       widget.book.authors!.isNotEmpty)
-                                    Text(
-                                      widget.book.authors!.join(', '),
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium,
+                                    GestureDetector(
+                                      onTap: () {
+                                        showModalBottomSheet(
+                                          context: context,
+                                          isScrollControlled: true,
+                                          builder: (BuildContext context) {
+                                            return AuthorDetailsCard(
+                                              authorName:
+                                                  widget.book.authors!.first,
+                                            );
+                                          },
+                                        );
+                                      },
+                                      child: Text(
+                                        widget.book.authors!.join(', '),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium
+                                            ?.copyWith(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary,
+                                            ),
+                                      ),
                                     ),
                                   if (widget.book.publisher != null)
                                     Text(

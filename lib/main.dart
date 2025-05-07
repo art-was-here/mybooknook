@@ -14,6 +14,7 @@ import 'models/book.dart';
 import 'widgets/scan_book_details_card.dart';
 import 'services/book_service.dart';
 import 'screens/search_screen.dart';
+import 'screens/notifications_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -317,6 +318,7 @@ class _MyAppState extends State<MyApp> {
             ),
         '/profile': (context) => const ProfileScreen(),
         '/search': (context) => const SearchScreen(),
+        '/notifications': (context) => const NotificationsScreen(),
       },
     );
   }
