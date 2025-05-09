@@ -472,7 +472,7 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
                         const SizedBox(height: 16),
                         // Bio Section
                         Text(
-                          'About Me (Optional)',
+                          'Bio (Optional)',
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 8),

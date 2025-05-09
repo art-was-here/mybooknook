@@ -715,9 +715,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     children: [
                       _buildProfileHeader(),
                       const SizedBox(height: 16),
-                      // About Me Section
+                      // Bio Section
                       Text(
-                        'About Me',
+                        'Bio',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 8),
