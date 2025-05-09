@@ -262,10 +262,10 @@ class _UserPageState extends State<UserPage> {
                   children: [
                     _buildProfileHeader(days, hours, minutes),
                     const SizedBox(height: 16),
-                    // About Me Section
+                    // Bio Section
                     if (_bio.isNotEmpty) ...[
                       Text(
-                        'About Me',
+                        'Bio',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 8),
