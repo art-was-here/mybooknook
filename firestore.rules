@@ -45,7 +45,7 @@ service cloud.firestore {
     // Allow access to books
     match /{path=**}/books/{bookId} {
       allow read: if isAuthenticated();
-      allow write: if isOwner(userId);
+      allow write: if isAuthenticated() && (path.matches('users/.*') ? path.split('/')[1] == request.auth.uid : false);
     }
 
     // Allow access to friends collection
@@ -70,6 +70,25 @@ service cloud.firestore {
         (request.resource.data.type == 'book_share' && request.resource.data.toUserId == userId && request.resource.data.fromUserId == request.auth.uid)
       );
       allow update, delete: if isAuthenticated() && (isOwner(userId) || request.resource.data.fromUserId == request.auth.uid);
+    }
+
+    // Allow access to messages
+    match /users/{userId}/messages/{messageId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (isOwner(userId) || request.auth.uid == resource.data.senderId);
+      allow delete: if isAuthenticated() && isOwner(userId);
+    }
+
+    // Allow access to chats
+    match /chats/{chatId} {
+      // Allow read/write for any authenticated user temporarily for debugging
+      allow read, write: if isAuthenticated();
+      
+      // Allow access to messages subcollection
+      match /messages/{messageId} {
+        allow read, write: if isAuthenticated();
+      }
     }
 
     match /notifications/{notificationId} {

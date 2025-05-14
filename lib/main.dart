@@ -17,6 +17,7 @@ import 'services/book_service.dart';
 import 'screens/search_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/messages_screen.dart';
+import 'screens/chat_room_screen.dart';
 import 'services/notification_service.dart';
 
 // Handle background messages
@@ -407,6 +408,7 @@ class _MyAppState extends State<MyApp> {
         '/search': (context) => const SearchScreen(),
         '/notifications': (context) => const NotificationsScreen(),
         '/messages': (context) => const MessagesScreen(),
+        // ChatRoomScreen requires parameters, so we navigate to it directly from MessagesScreen
       },
     );
   }
