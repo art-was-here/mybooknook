@@ -1799,7 +1799,40 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return;
     }
 
-    print('No cached profile image found');
+    print('No cached profile image found, checking Firebase');
+    // If no cached image, check Firebase
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (userDoc.exists) {
+        final data = userDoc.data() as Map<String, dynamic>;
+        final profileImage = data['profileImageBase64'] as String?;
+
+        if (profileImage != null) {
+          print('Found profile image in Firebase, caching it');
+          // Cache the image
+          await prefs.setString(
+              '${userPrefix}cachedProfileImage', profileImage);
+          await prefs.setInt('${userPrefix}lastImageUpdate',
+              DateTime.now().millisecondsSinceEpoch);
+
+          if (mounted) {
+            setState(() {
+              _cachedProfileImage = profileImage;
+              _isProfileImageLoading = false;
+            });
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      print('Error loading profile image from Firebase: $e');
+    }
+
+    print('No profile image found in Firebase');
     if (mounted) {
       setState(() {
         _isProfileImageLoading = false;
