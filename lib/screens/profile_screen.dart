@@ -980,6 +980,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         'Favorites',
                                         bookService,
                                         book['listId'],
+                                        actualListId: book['listId'],
+                                        onBookDeleted: () async {
+                                          // Refresh the favorites list
+                                          await _syncWithFirebase();
+                                          if (mounted) {
+                                            setState(() {});
+                                          }
+                                        },
                                       );
                                     },
                                     child: Padding(

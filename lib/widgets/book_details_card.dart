@@ -21,6 +21,7 @@ class BookDetailsCard extends StatefulWidget {
   final Function(String)? onAddToList;
   final Map<String, String>? lists;
   final String? actualListId;
+  final VoidCallback? onBookDeleted;
 
   const BookDetailsCard({
     super.key,
@@ -31,11 +32,12 @@ class BookDetailsCard extends StatefulWidget {
     this.onAddToList,
     this.lists,
     this.actualListId,
+    this.onBookDeleted,
   });
 
   static void show(BuildContext context, Book book, String listName,
       BookService bookService, String? listId,
-      {String? actualListId}) {
+      {String? actualListId, VoidCallback? onBookDeleted}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -46,6 +48,7 @@ class BookDetailsCard extends StatefulWidget {
           bookService: bookService,
           listId: listId,
           actualListId: actualListId,
+          onBookDeleted: onBookDeleted,
         );
       },
     );
@@ -1018,27 +1021,73 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                                         FirebaseAuth.instance.currentUser;
                                     if (user == null) return;
 
+                                    // Get the book's actual list ID and name
+                                    final listId =
+                                        widget.actualListId ?? widget.listId;
+                                    final listDoc = await FirebaseFirestore
+                                        .instance
+                                        .collection('users')
+                                        .doc(user.uid)
+                                        .collection('lists')
+                                        .doc(listId)
+                                        .get();
+
+                                    final listName = listDoc.data()?['name'] ??
+                                        'Unknown List';
+
                                     // Get the book's actual list ID from the document path
                                     final bookRef = FirebaseFirestore.instance
                                         .collection('users')
                                         .doc(user.uid)
                                         .collection('lists')
-                                        .doc(widget.actualListId ??
-                                            widget.listId)
+                                        .doc(listId)
                                         .collection('books')
                                         .doc(widget.book.isbn);
 
+                                    // Delete from the list
                                     await bookRef.delete();
+
+                                    // If the book was in favorites, remove it from favorites
+                                    final userBooksRef = FirebaseFirestore
+                                        .instance
+                                        .collection('users')
+                                        .doc(user.uid)
+                                        .collection('books')
+                                        .doc(widget.book.isbn);
+
+                                    final bookDoc = await userBooksRef.get();
+                                    if (bookDoc.exists &&
+                                        bookDoc.data()?['isFavorite'] == true) {
+                                      await userBooksRef.update({
+                                        'isFavorite': false,
+                                        'listId': null,
+                                      });
+
+                                      // Update SharedPreferences
+                                      final prefs =
+                                          await SharedPreferences.getInstance();
+                                      final favoriteBooksJson =
+                                          prefs.getString('favoriteBooks') ??
+                                              '[]';
+                                      final List<dynamic> favoriteBooksList =
+                                          jsonDecode(favoriteBooksJson);
+                                      favoriteBooksList.removeWhere((book) =>
+                                          book['isbn'] == widget.book.isbn);
+                                      await prefs.setString('favoriteBooks',
+                                          jsonEncode(favoriteBooksList));
+                                    }
 
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context)
                                           .showSnackBar(
                                         SnackBar(
                                           content: Text(
-                                            'Book deleted from ${widget.listName}',
+                                            'Book deleted from $listName',
                                           ),
                                         ),
                                       );
+                                      // Call the onBookDeleted callback if provided
+                                      widget.onBookDeleted?.call();
                                       Navigator.pop(context);
                                     }
                                   } catch (e) {
