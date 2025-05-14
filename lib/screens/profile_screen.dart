@@ -1078,6 +1078,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         value: _totalBooks > 0 ? _totalPages / _totalBooks : 0,
                         backgroundColor: Colors.grey[200],
                       ),
+                      const SizedBox(height: 5),
                     ],
                   ),
                 ),
