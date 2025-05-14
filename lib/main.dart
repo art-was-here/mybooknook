@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app_links/app_links.dart';
@@ -15,10 +16,53 @@ import 'widgets/scan_book_details_card.dart';
 import 'services/book_service.dart';
 import 'screens/search_screen.dart';
 import 'screens/notifications_screen.dart';
+import 'screens/messages_screen.dart';
+import 'screens/chat_room_screen.dart';
+import 'services/notification_service.dart';
+import 'services/update_service.dart';
+
+// Handle background messages
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  print('Handling a background message: ${message.messageId}');
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  // Initialize Firebase Cloud Messaging
+  final messaging = FirebaseMessaging.instance;
+
+  // Request permission for notifications
+  NotificationSettings settings = await messaging.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
+
+  print('User granted permission: ${settings.authorizationStatus}');
+
+  // Set up background message handler
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // Handle foreground messages
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    print('Got a message whilst in the foreground!');
+    print('Message data: ${message.data}');
+
+    if (message.notification != null) {
+      print('Message also contained a notification: ${message.notification}');
+    }
+  });
+
+  // Handle notification taps when app is in background
+  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    print('Message clicked!');
+    print('Message data: ${message.data}');
+  });
+
   runApp(const MyApp());
 }
 
@@ -36,12 +80,48 @@ class _MyAppState extends State<MyApp> {
   StreamSubscription? _linkSubscription;
   Book? _sharedBook;
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  String? _fcmToken;
+  final NotificationService _notificationService = NotificationService();
+  final UpdateService _updateService = UpdateService(
+    owner: 'art-was-here', // Replace with your GitHub username
+    repo: 'mybooknook', // Replace with your repo name
+  );
 
   @override
   void initState() {
     super.initState();
     _loadAccentColor();
     _initDeepLinkListener();
+    _initializeNotifications();
+    _setupFCM();
+
+    // Check for updates after a short delay
+    Future.delayed(const Duration(seconds: 3), () {
+      _checkForUpdates();
+    });
+  }
+
+  Future<void> _checkForUpdates() async {
+    try {
+      final release = await _updateService.checkForUpdates();
+      if (release != null && mounted) {
+        // A new version is available
+        final context = _navigatorKey.currentContext;
+        if (context != null) {
+          await _updateService.showUpdateDialog(context, release);
+        }
+      }
+    } catch (e) {
+      print('Error checking for updates: $e');
+    }
+  }
+
+  Future<void> _initializeNotifications() async {
+    try {
+      await _notificationService.initialize();
+    } catch (e) {
+      print('Error initializing notifications: $e');
+    }
   }
 
   @override
@@ -215,6 +295,40 @@ class _MyAppState extends State<MyApp> {
     print('=== Deep Link Handling Completed ===\n');
   }
 
+  Future<void> _setupFCM() async {
+    try {
+      // Get FCM token
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null) {
+        setState(() {
+          _fcmToken = token;
+        });
+
+        // Save FCM token to Firestore for the current user
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .update({'fcmToken': token});
+        }
+      }
+
+      // Listen for token refresh
+      FirebaseMessaging.instance.onTokenRefresh.listen((token) {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .update({'fcmToken': token});
+        }
+      });
+    } catch (e) {
+      print('Error setting up FCM: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -319,6 +433,8 @@ class _MyAppState extends State<MyApp> {
         '/profile': (context) => const ProfileScreen(),
         '/search': (context) => const SearchScreen(),
         '/notifications': (context) => const NotificationsScreen(),
+        '/messages': (context) => const MessagesScreen(),
+        // ChatRoomScreen requires parameters, so we navigate to it directly from MessagesScreen
       },
     );
   }

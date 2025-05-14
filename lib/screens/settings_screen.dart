@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:convert';
 import '../models/settings.dart' as app_settings;
 import '../models/book.dart';
+import '../services/notification_service.dart';
+import '../services/update_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
@@ -32,6 +34,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Color _selectedAccentColor = Colors.teal;
   String _sortOrder = 'title';
   Color _accentColor = Colors.teal;
+  final NotificationService _notificationService = NotificationService();
+  final UpdateService _updateService = UpdateService(
+    owner: 'your-github-username', // Replace with your GitHub username
+    repo: 'mybooknook', // Replace with your repo name
+  );
+  bool _isCheckingUpdate = false;
+  bool _isTestingNotification = false;
 
   @override
   void initState() {
@@ -371,6 +380,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
+                      'Notifications',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 15.0),
+                      child: const Divider(height: 1),
+                    ),
+                    const SizedBox(height: 16),
+                    ListTile(
+                      title: const Text('Test Notification'),
+                      subtitle: const Text(
+                          'Send a test notification with a 5-second delay'),
+                      trailing: _isTestingNotification
+                          ? const CircularProgressIndicator()
+                          : const Icon(Icons.notifications_active),
+                      onTap: _isTestingNotification
+                          ? null
+                          : () => _sendTestNotification(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'App Updates',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 15.0),
+                      child: const Divider(height: 1),
+                    ),
+                    const SizedBox(height: 16),
+                    ListTile(
+                      title: const Text('Check for updates'),
+                      subtitle:
+                          const Text('Check if a new version is available'),
+                      trailing: _isCheckingUpdate
+                          ? const CircularProgressIndicator()
+                          : const Icon(Icons.system_update),
+                      onTap: _isCheckingUpdate ? null : _checkForUpdates,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
                       'Data Management',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
@@ -453,6 +536,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error saving accent color: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _sendTestNotification() async {
+    if (_isTestingNotification) return;
+
+    setState(() {
+      _isTestingNotification = true;
+    });
+
+    try {
+      // Show a snackbar to inform the user
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Test notification will appear in 5 seconds'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      // Send the test notification
+      await _notificationService.sendTestNotification();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error sending test notification: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isTestingNotification = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _checkForUpdates() async {
+    if (_isCheckingUpdate) return;
+
+    setState(() {
+      _isCheckingUpdate = true;
+    });
+
+    try {
+      final release = await _updateService.checkForUpdates();
+
+      if (mounted) {
+        setState(() {
+          _isCheckingUpdate = false;
+        });
+
+        if (release != null) {
+          await _updateService.showUpdateDialog(context, release);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('You are using the latest version')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isCheckingUpdate = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error checking for updates: $e')),
         );
       }
     }

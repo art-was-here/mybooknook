@@ -962,16 +962,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ],
                         ),
                   onSelected: (String value) {
-                    if (value == 'profile') {
-                      Navigator.pushNamed(context, '/profile');
-                    } else if (value == 'search') {
-                      Navigator.pushNamed(context, '/search');
-                    } else if (value == 'notifications') {
-                      Navigator.pushNamed(context, '/notifications');
-                    } else if (value == 'settings') {
-                      Navigator.pushNamed(context, '/settings');
-                    } else if (value == 'logout') {
-                      _showLogoutDialog();
+                    switch (value) {
+                      case 'profile':
+                        Navigator.pushNamed(context, '/profile');
+                        break;
+                      case 'search':
+                        Navigator.pushNamed(context, '/search');
+                        break;
+                      case 'notifications':
+                        Navigator.pushNamed(context, '/notifications');
+                        break;
+                      case 'messages':
+                        Navigator.pushNamed(context, '/messages');
+                        break;
+                      case 'settings':
+                        Navigator.pushNamed(context, '/settings');
+                        break;
+                      case 'logout':
+                        _showLogoutDialog();
+                        break;
                     }
                   },
                   constraints: BoxConstraints(
@@ -1014,7 +1023,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           Icon(Icons.notifications,
                               color: Theme.of(context).colorScheme.primary),
                           const SizedBox(width: 8),
-                          const Text('Messages'),
+                          const Text('Notifications'),
                           if (_hasUnreadNotifications) ...[
                             const Spacer(),
                             Container(
@@ -1037,6 +1046,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               ),
                             ),
                           ],
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'messages',
+                      child: Row(
+                        children: [
+                          Icon(Icons.message,
+                              color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 8),
+                          const Text('Messages'),
                         ],
                       ),
                     ),
@@ -1455,11 +1475,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final querySnapshot = await query.get();
       print('Query completed: ${querySnapshot.docs.length} documents found');
 
-      // Update total books count
+      // Update total books count - count all book entries
       final settings = app_settings.Settings();
       await settings.load();
-      await settings.updateBookCounts(
-          querySnapshot.docs.length, settings.readBooks);
+
+      // Count all book entries
+      final totalBooks = querySnapshot.docs.length;
+      await settings.updateBookCounts(totalBooks, settings.readBooks);
       await settings.save();
 
       // Clear the current books list
@@ -1779,7 +1801,40 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return;
     }
 
-    print('No cached profile image found');
+    print('No cached profile image found, checking Firebase');
+    // If no cached image, check Firebase
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (userDoc.exists) {
+        final data = userDoc.data() as Map<String, dynamic>;
+        final profileImage = data['profileImageBase64'] as String?;
+
+        if (profileImage != null) {
+          print('Found profile image in Firebase, caching it');
+          // Cache the image
+          await prefs.setString(
+              '${userPrefix}cachedProfileImage', profileImage);
+          await prefs.setInt('${userPrefix}lastImageUpdate',
+              DateTime.now().millisecondsSinceEpoch);
+
+          if (mounted) {
+            setState(() {
+              _cachedProfileImage = profileImage;
+              _isProfileImageLoading = false;
+            });
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      print('Error loading profile image from Firebase: $e');
+    }
+
+    print('No profile image found in Firebase');
     if (mounted) {
       setState(() {
         _isProfileImageLoading = false;

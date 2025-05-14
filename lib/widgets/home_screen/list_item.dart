@@ -147,6 +147,7 @@ class _ListItemState extends State<ListItem> {
             ),
           ),
         ),
+        const SizedBox(height: 10),
       ],
     );
   }

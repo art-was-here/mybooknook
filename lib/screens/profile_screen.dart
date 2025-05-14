@@ -8,6 +8,10 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../models/settings.dart' as app_settings;
+import '../models/book.dart';
+import '../services/book_service.dart';
+import '../widgets/book_details_card.dart';
+import 'user_page.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -143,8 +147,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
 
         // Check other data
-        final newTotalBooks = data['totalBooks'] ?? 0;
-        final newTotalPages = data['totalPages'] ?? 0;
         final newFavoriteGenre = data['favoriteGenre'] ?? '';
         final newFavoriteAuthor = data['favoriteAuthor'] ?? '';
         final newLastUpdated = data['lastUpdated'] ?? '';
@@ -169,16 +171,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             .toList();
 
         // Compare with local data and update if needed
-        if (newTotalBooks != _totalBooks ||
-            newTotalPages != _totalPages ||
-            newFavoriteGenre != _favoriteGenre ||
+        if (newFavoriteGenre != _favoriteGenre ||
             newFavoriteAuthor != _favoriteAuthor ||
             newLastUpdated != _lastUpdated ||
             !_areListsEqual(newFavoriteGenreTags, _favoriteGenreTags) ||
             !_areBookListsEqual(newFavoriteBooks, _favoriteBooks)) {
           setState(() {
-            _totalBooks = newTotalBooks;
-            _totalPages = newTotalPages;
             _favoriteGenre = newFavoriteGenre;
             _favoriteAuthor = newFavoriteAuthor;
             _lastUpdated = newLastUpdated;
@@ -661,6 +659,191 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _showFriendsList() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final friendsSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('friends')
+          .get();
+
+      if (!mounted) return;
+
+      if (friendsSnapshot.docs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You don\'t have any friends yet'),
+          ),
+        );
+        return;
+      }
+
+      // Create a scroll controller to track scroll position
+      final scrollController = ScrollController();
+      bool isScrolledToTop = true;
+
+      // Listen to scroll events
+      scrollController.addListener(() {
+        if (scrollController.position.pixels <= 0) {
+          isScrolledToTop = true;
+        } else {
+          isScrolledToTop = false;
+        }
+      });
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) {
+          return DraggableScrollableSheet(
+            initialChildSize: 0.9,
+            minChildSize: 0.5,
+            maxChildSize: 0.9,
+            builder: (context, scrollController) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    // Handle bar
+                    Container(
+                      margin: const EdgeInsets.only(top: 8),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    // Title
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Text(
+                        'Friends',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                    // Friends list
+                    Expanded(
+                      child: Card(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        child: ListView.builder(
+                          controller: scrollController,
+                          itemCount: friendsSnapshot.docs.length,
+                          itemBuilder: (context, index) {
+                            final friend = friendsSnapshot.docs[index];
+                            final friendData = friend.data();
+
+                            return ListTile(
+                              leading: CircleAvatar(
+                                child: Text(
+                                  friendData['username']?[0]?.toUpperCase() ??
+                                      '?',
+                                ),
+                              ),
+                              title: Text(
+                                  '@${friendData['username'] ?? 'Unknown'}'),
+                              trailing: TextButton(
+                                onPressed: () async {
+                                  try {
+                                    // Remove friend from both users' friend lists
+                                    await FirebaseFirestore.instance
+                                        .collection('users')
+                                        .doc(user.uid)
+                                        .collection('friends')
+                                        .doc(friend.id)
+                                        .delete();
+
+                                    await FirebaseFirestore.instance
+                                        .collection('users')
+                                        .doc(friend.id)
+                                        .collection('friends')
+                                        .doc(user.uid)
+                                        .delete();
+
+                                    // Update the friend count
+                                    setState(() {
+                                      _friendCount--;
+                                    });
+
+                                    // Close the modal and show success message
+                                    if (mounted) {
+                                      Navigator.pop(context);
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                              'Friend removed successfully'),
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    print('Error removing friend: $e');
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content:
+                                              Text('Error removing friend: $e'),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                                child: Text(
+                                  'Unfriend',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontSize: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.fontSize,
+                                  ),
+                                ),
+                              ),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => UserPage(
+                                      userId: friend.id,
+                                      username:
+                                          friendData['username'] ?? 'Unknown',
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      );
+    } catch (e) {
+      print('Error loading friends list: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading friends: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     print(
@@ -732,6 +915,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
+                          filled: true,
+                          fillColor: Theme.of(context).scaffoldBackgroundColor,
                         ),
                       ),
                       const SizedBox(height: 5),
@@ -768,60 +953,96 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 padding: const EdgeInsets.only(bottom: 8),
                                 itemBuilder: (context, index) {
                                   final book = _favoriteBooks[index];
-                                  return Padding(
-                                    padding: const EdgeInsets.only(right: 16),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Container(
-                                          width: 120,
-                                          height: 145,
-                                          clipBehavior: Clip.antiAlias,
-                                          decoration: BoxDecoration(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            image: book['imageUrl'] != null
-                                                ? DecorationImage(
-                                                    image: NetworkImage(
-                                                        book['imageUrl']),
-                                                    fit: BoxFit.cover,
+                                  return GestureDetector(
+                                    onTap: () {
+                                      final bookObj = Book(
+                                        title: book['title'] ?? '',
+                                        authors: List<String>.from(
+                                            book['authors'] ?? []),
+                                        isbn: book['isbn'] ?? '',
+                                        imageUrl: book['imageUrl'],
+                                        description: book['description'],
+                                        publisher: book['publisher'],
+                                        publishedDate: book['publishedDate'],
+                                        pageCount: book['pageCount'],
+                                        categories: List<String>.from(
+                                            book['categories'] ?? []),
+                                      );
+
+                                      final bookService = BookService(context);
+                                      BookDetailsCard.show(
+                                        context,
+                                        bookObj,
+                                        'Favorites',
+                                        bookService,
+                                        book['listId'],
+                                        actualListId: book['listId'],
+                                        onBookDeleted: () async {
+                                          // Refresh the favorites list
+                                          await _syncWithFirebase();
+                                          if (mounted) {
+                                            setState(() {});
+                                          }
+                                        },
+                                      );
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(right: 16),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            width: 120,
+                                            height: 145,
+                                            clipBehavior: Clip.antiAlias,
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              image: book['imageUrl'] != null
+                                                  ? DecorationImage(
+                                                      image: NetworkImage(
+                                                          book['imageUrl']),
+                                                      fit: BoxFit.cover,
+                                                    )
+                                                  : null,
+                                              color: Colors.grey[200],
+                                            ),
+                                            child: book['imageUrl'] == null
+                                                ? const Icon(
+                                                    Icons.book,
+                                                    size: 48,
+                                                    color: Colors.grey,
                                                   )
                                                 : null,
-                                            color: Colors.grey[200],
                                           ),
-                                          child: book['imageUrl'] == null
-                                              ? const Icon(
-                                                  Icons.book,
-                                                  size: 48,
-                                                  color: Colors.grey,
-                                                )
-                                              : null,
-                                        ),
-                                        const SizedBox(height: 8),
-                                        SizedBox(
-                                          width: 120,
-                                          child: Tooltip(
-                                            message: book['title'] ??
-                                                'Unknown Title',
-                                            child: Text(
-                                              book['title'] ?? 'Unknown Title',
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .bodyMedium
-                                                  ?.copyWith(
-                                                    fontSize: Theme.of(context)
-                                                            .textTheme
-                                                            .bodyMedium!
-                                                            .fontSize! *
-                                                        0.85,
-                                                  ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              textAlign: TextAlign.center,
+                                          const SizedBox(height: 8),
+                                          SizedBox(
+                                            width: 120,
+                                            child: Tooltip(
+                                              message: book['title'] ??
+                                                  'Unknown Title',
+                                              child: Text(
+                                                book['title'] ??
+                                                    'Unknown Title',
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodyMedium
+                                                    ?.copyWith(
+                                                      fontSize:
+                                                          Theme.of(context)
+                                                                  .textTheme
+                                                                  .bodyMedium!
+                                                                  .fontSize! *
+                                                              0.85,
+                                                    ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                textAlign: TextAlign.center,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   );
                                 },
@@ -859,6 +1080,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         value: _totalBooks > 0 ? _totalPages / _totalBooks : 0,
                         backgroundColor: Colors.grey[200],
                       ),
+                      const SizedBox(height: 5),
                     ],
                   ),
                 ),
@@ -1069,11 +1291,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: Theme.of(context).colorScheme.primary,
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        '$_friendCount ${_friendCount == 1 ? 'Friend' : 'Friends'}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
+                      GestureDetector(
+                        onTap: _showFriendsList,
+                        child: Text(
+                          '$_friendCount ${_friendCount == 1 ? 'Friend' : 'Friends'}',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                        ),
                       ),
                     ],
                   ),
