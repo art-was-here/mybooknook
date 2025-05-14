@@ -426,6 +426,15 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                                       currentUserDoc.data()?['username'] ??
                                           'Unknown User';
 
+                                  // Get the recipient's FCM token
+                                  final recipientDoc = await FirebaseFirestore
+                                      .instance
+                                      .collection('users')
+                                      .doc(friend.id)
+                                      .get();
+                                  final recipientFcmToken =
+                                      recipientDoc.data()?['fcmToken'];
+
                                   // Create notification data
                                   final notificationData = {
                                     'type': 'book_share',
@@ -461,6 +470,31 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
 
                                   // Commit the batch
                                   await batch.commit();
+
+                                  // Send push notification if FCM token exists
+                                  if (recipientFcmToken != null) {
+                                    try {
+                                      await FirebaseFirestore.instance
+                                          .collection('fcm_messages')
+                                          .add({
+                                        'token': recipientFcmToken,
+                                        'notification': {
+                                          'title': 'Book Shared',
+                                          'body':
+                                              '@$currentUsername shared "${widget.book.title}" with you',
+                                        },
+                                        'data': {
+                                          'type': 'book_share',
+                                          'isbn': widget.book.isbn,
+                                        },
+                                        'timestamp':
+                                            FieldValue.serverTimestamp(),
+                                      });
+                                    } catch (e) {
+                                      print(
+                                          'Error sending push notification: $e');
+                                    }
+                                  }
 
                                   if (context.mounted) {
                                     Navigator.pop(context);
@@ -1037,7 +1071,6 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
                 ),
               ),
             ],
-
           ),
         ),
       ),

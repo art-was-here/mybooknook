@@ -962,16 +962,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ],
                         ),
                   onSelected: (String value) {
-                    if (value == 'profile') {
-                      Navigator.pushNamed(context, '/profile');
-                    } else if (value == 'search') {
-                      Navigator.pushNamed(context, '/search');
-                    } else if (value == 'notifications') {
-                      Navigator.pushNamed(context, '/notifications');
-                    } else if (value == 'settings') {
-                      Navigator.pushNamed(context, '/settings');
-                    } else if (value == 'logout') {
-                      _showLogoutDialog();
+                    switch (value) {
+                      case 'profile':
+                        Navigator.pushNamed(context, '/profile');
+                        break;
+                      case 'search':
+                        Navigator.pushNamed(context, '/search');
+                        break;
+                      case 'notifications':
+                        Navigator.pushNamed(context, '/notifications');
+                        break;
+                      case 'messages':
+                        Navigator.pushNamed(context, '/messages');
+                        break;
+                      case 'settings':
+                        Navigator.pushNamed(context, '/settings');
+                        break;
+                      case 'logout':
+                        _showLogoutDialog();
+                        break;
                     }
                   },
                   constraints: BoxConstraints(
@@ -1014,7 +1023,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           Icon(Icons.notifications,
                               color: Theme.of(context).colorScheme.primary),
                           const SizedBox(width: 8),
-                          const Text('Messages'),
+                          const Text('Notifications'),
                           if (_hasUnreadNotifications) ...[
                             const Spacer(),
                             Container(
@@ -1037,6 +1046,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               ),
                             ),
                           ],
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'messages',
+                      child: Row(
+                        children: [
+                          Icon(Icons.message,
+                              color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 8),
+                          const Text('Messages'),
                         ],
                       ),
                     ),

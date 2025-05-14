@@ -513,6 +513,29 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         color: Colors.red,
                         child: const Icon(Icons.delete, color: Colors.white),
                       ),
+                      confirmDismiss: (direction) async {
+                        return await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Delete Notification'),
+                                content: const Text(
+                                    'Are you sure you want to delete this notification?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('No'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text('Yes'),
+                                  ),
+                                ],
+                              ),
+                            ) ??
+                            false;
+                      },
                       onDismissed: (direction) {
                         _deleteNotification(notification['id']);
                       },
@@ -541,6 +564,36 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ],
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline,
+                              color: Colors.red),
+                          onPressed: () async {
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Delete Notification'),
+                                content: const Text(
+                                    'Are you sure you want to delete this notification?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('No'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text('Yes'),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (confirmed == true) {
+                              _deleteNotification(notification['id']);
+                            }
+                          },
                         ),
                         onTap: () {
                           if (notification['isRead'] != true) {
