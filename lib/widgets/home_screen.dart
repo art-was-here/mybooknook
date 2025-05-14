@@ -1475,11 +1475,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final querySnapshot = await query.get();
       print('Query completed: ${querySnapshot.docs.length} documents found');
 
-      // Update total books count
+      // Update total books count - count all book entries
       final settings = app_settings.Settings();
       await settings.load();
-      await settings.updateBookCounts(
-          querySnapshot.docs.length, settings.readBooks);
+
+      // Count all book entries
+      final totalBooks = querySnapshot.docs.length;
+      await settings.updateBookCounts(totalBooks, settings.readBooks);
       await settings.save();
 
       // Clear the current books list

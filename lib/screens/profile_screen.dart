@@ -147,8 +147,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
 
         // Check other data
-        final newTotalBooks = data['totalBooks'] ?? 0;
-        final newTotalPages = data['totalPages'] ?? 0;
         final newFavoriteGenre = data['favoriteGenre'] ?? '';
         final newFavoriteAuthor = data['favoriteAuthor'] ?? '';
         final newLastUpdated = data['lastUpdated'] ?? '';
@@ -173,16 +171,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             .toList();
 
         // Compare with local data and update if needed
-        if (newTotalBooks != _totalBooks ||
-            newTotalPages != _totalPages ||
-            newFavoriteGenre != _favoriteGenre ||
+        if (newFavoriteGenre != _favoriteGenre ||
             newFavoriteAuthor != _favoriteAuthor ||
             newLastUpdated != _lastUpdated ||
             !_areListsEqual(newFavoriteGenreTags, _favoriteGenreTags) ||
             !_areBookListsEqual(newFavoriteBooks, _favoriteBooks)) {
           setState(() {
-            _totalBooks = newTotalBooks;
-            _totalPages = newTotalPages;
             _favoriteGenre = newFavoriteGenre;
             _favoriteAuthor = newFavoriteAuthor;
             _lastUpdated = newLastUpdated;
