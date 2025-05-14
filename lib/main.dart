@@ -19,6 +19,7 @@ import 'screens/notifications_screen.dart';
 import 'screens/messages_screen.dart';
 import 'screens/chat_room_screen.dart';
 import 'services/notification_service.dart';
+import 'services/update_service.dart';
 
 // Handle background messages
 @pragma('vm:entry-point')
@@ -81,6 +82,10 @@ class _MyAppState extends State<MyApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   String? _fcmToken;
   final NotificationService _notificationService = NotificationService();
+  final UpdateService _updateService = UpdateService(
+    owner: 'art-was-here', // Replace with your GitHub username
+    repo: 'mybooknook', // Replace with your repo name
+  );
 
   @override
   void initState() {
@@ -88,6 +93,27 @@ class _MyAppState extends State<MyApp> {
     _loadAccentColor();
     _initDeepLinkListener();
     _initializeNotifications();
+    _setupFCM();
+
+    // Check for updates after a short delay
+    Future.delayed(const Duration(seconds: 3), () {
+      _checkForUpdates();
+    });
+  }
+
+  Future<void> _checkForUpdates() async {
+    try {
+      final release = await _updateService.checkForUpdates();
+      if (release != null && mounted) {
+        // A new version is available
+        final context = _navigatorKey.currentContext;
+        if (context != null) {
+          await _updateService.showUpdateDialog(context, release);
+        }
+      }
+    } catch (e) {
+      print('Error checking for updates: $e');
+    }
   }
 
   Future<void> _initializeNotifications() async {
