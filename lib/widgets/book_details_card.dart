@@ -215,6 +215,13 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    if (widget.listId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This book is not in any list')),
+      );
+      return;
+    }
+
     try {
       // Update Firebase
       final bookRef = FirebaseFirestore.instance
@@ -227,6 +234,7 @@ class _BookDetailsCardState extends State<BookDetailsCard> {
         // Remove from favorites in Firebase
         await bookRef.update({
           'isFavorite': false,
+          'listId': null,
         });
       } else {
         // Add to favorites in Firebase

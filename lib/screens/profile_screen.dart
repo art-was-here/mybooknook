@@ -8,6 +8,9 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../models/settings.dart' as app_settings;
+import '../models/book.dart';
+import '../services/book_service.dart';
+import '../widgets/book_details_card.dart';
 import 'user_page.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -954,60 +957,88 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 padding: const EdgeInsets.only(bottom: 8),
                                 itemBuilder: (context, index) {
                                   final book = _favoriteBooks[index];
-                                  return Padding(
-                                    padding: const EdgeInsets.only(right: 16),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Container(
-                                          width: 120,
-                                          height: 145,
-                                          clipBehavior: Clip.antiAlias,
-                                          decoration: BoxDecoration(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            image: book['imageUrl'] != null
-                                                ? DecorationImage(
-                                                    image: NetworkImage(
-                                                        book['imageUrl']),
-                                                    fit: BoxFit.cover,
+                                  return GestureDetector(
+                                    onTap: () {
+                                      final bookObj = Book(
+                                        title: book['title'] ?? '',
+                                        authors: List<String>.from(
+                                            book['authors'] ?? []),
+                                        isbn: book['isbn'] ?? '',
+                                        imageUrl: book['imageUrl'],
+                                        description: book['description'],
+                                        publisher: book['publisher'],
+                                        publishedDate: book['publishedDate'],
+                                        pageCount: book['pageCount'],
+                                        categories: List<String>.from(
+                                            book['categories'] ?? []),
+                                      );
+
+                                      final bookService = BookService(context);
+                                      BookDetailsCard.show(
+                                        context,
+                                        bookObj,
+                                        'Favorites',
+                                        bookService,
+                                        book['listId'],
+                                      );
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(right: 16),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            width: 120,
+                                            height: 145,
+                                            clipBehavior: Clip.antiAlias,
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              image: book['imageUrl'] != null
+                                                  ? DecorationImage(
+                                                      image: NetworkImage(
+                                                          book['imageUrl']),
+                                                      fit: BoxFit.cover,
+                                                    )
+                                                  : null,
+                                              color: Colors.grey[200],
+                                            ),
+                                            child: book['imageUrl'] == null
+                                                ? const Icon(
+                                                    Icons.book,
+                                                    size: 48,
+                                                    color: Colors.grey,
                                                   )
                                                 : null,
-                                            color: Colors.grey[200],
                                           ),
-                                          child: book['imageUrl'] == null
-                                              ? const Icon(
-                                                  Icons.book,
-                                                  size: 48,
-                                                  color: Colors.grey,
-                                                )
-                                              : null,
-                                        ),
-                                        const SizedBox(height: 8),
-                                        SizedBox(
-                                          width: 120,
-                                          child: Tooltip(
-                                            message: book['title'] ??
-                                                'Unknown Title',
-                                            child: Text(
-                                              book['title'] ?? 'Unknown Title',
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .bodyMedium
-                                                  ?.copyWith(
-                                                    fontSize: Theme.of(context)
-                                                            .textTheme
-                                                            .bodyMedium!
-                                                            .fontSize! *
-                                                        0.85,
-                                                  ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              textAlign: TextAlign.center,
+                                          const SizedBox(height: 8),
+                                          SizedBox(
+                                            width: 120,
+                                            child: Tooltip(
+                                              message: book['title'] ??
+                                                  'Unknown Title',
+                                              child: Text(
+                                                book['title'] ??
+                                                    'Unknown Title',
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodyMedium
+                                                    ?.copyWith(
+                                                      fontSize:
+                                                          Theme.of(context)
+                                                                  .textTheme
+                                                                  .bodyMedium!
+                                                                  .fontSize! *
+                                                              0.85,
+                                                    ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                textAlign: TextAlign.center,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   );
                                 },

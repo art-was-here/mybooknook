@@ -269,6 +269,13 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    if (_selectedListId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a list first')),
+      );
+      return;
+    }
+
     try {
       // Update Firebase
       final bookRef = FirebaseFirestore.instance
@@ -281,6 +288,7 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
         // Remove from favorites in Firebase
         await bookRef.update({
           'isFavorite': false,
+          'listId': null,
         });
       } else {
         // Add to favorites in Firebase
