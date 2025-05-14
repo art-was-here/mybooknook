@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../models/settings.dart' as app_settings;
+import 'user_page.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -661,6 +662,191 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _showFriendsList() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final friendsSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('friends')
+          .get();
+
+      if (!mounted) return;
+
+      if (friendsSnapshot.docs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You don\'t have any friends yet'),
+          ),
+        );
+        return;
+      }
+
+      // Create a scroll controller to track scroll position
+      final scrollController = ScrollController();
+      bool isScrolledToTop = true;
+
+      // Listen to scroll events
+      scrollController.addListener(() {
+        if (scrollController.position.pixels <= 0) {
+          isScrolledToTop = true;
+        } else {
+          isScrolledToTop = false;
+        }
+      });
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) {
+          return DraggableScrollableSheet(
+            initialChildSize: 0.9,
+            minChildSize: 0.5,
+            maxChildSize: 0.9,
+            builder: (context, scrollController) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    // Handle bar
+                    Container(
+                      margin: const EdgeInsets.only(top: 8),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    // Title
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Text(
+                        'Friends',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                    // Friends list
+                    Expanded(
+                      child: Card(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        child: ListView.builder(
+                          controller: scrollController,
+                          itemCount: friendsSnapshot.docs.length,
+                          itemBuilder: (context, index) {
+                            final friend = friendsSnapshot.docs[index];
+                            final friendData = friend.data();
+
+                            return ListTile(
+                              leading: CircleAvatar(
+                                child: Text(
+                                  friendData['username']?[0]?.toUpperCase() ??
+                                      '?',
+                                ),
+                              ),
+                              title: Text(
+                                  '@${friendData['username'] ?? 'Unknown'}'),
+                              trailing: TextButton(
+                                onPressed: () async {
+                                  try {
+                                    // Remove friend from both users' friend lists
+                                    await FirebaseFirestore.instance
+                                        .collection('users')
+                                        .doc(user.uid)
+                                        .collection('friends')
+                                        .doc(friend.id)
+                                        .delete();
+
+                                    await FirebaseFirestore.instance
+                                        .collection('users')
+                                        .doc(friend.id)
+                                        .collection('friends')
+                                        .doc(user.uid)
+                                        .delete();
+
+                                    // Update the friend count
+                                    setState(() {
+                                      _friendCount--;
+                                    });
+
+                                    // Close the modal and show success message
+                                    if (mounted) {
+                                      Navigator.pop(context);
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                              'Friend removed successfully'),
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    print('Error removing friend: $e');
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content:
+                                              Text('Error removing friend: $e'),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                                child: Text(
+                                  'Unfriend',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontSize: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.fontSize,
+                                  ),
+                                ),
+                              ),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => UserPage(
+                                      userId: friend.id,
+                                      username:
+                                          friendData['username'] ?? 'Unknown',
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      );
+    } catch (e) {
+      print('Error loading friends list: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading friends: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     print(
@@ -1069,11 +1255,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: Theme.of(context).colorScheme.primary,
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        '$_friendCount ${_friendCount == 1 ? 'Friend' : 'Friends'}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
+                      GestureDetector(
+                        onTap: _showFriendsList,
+                        child: Text(
+                          '$_friendCount ${_friendCount == 1 ? 'Friend' : 'Friends'}',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                        ),
                       ),
                     ],
                   ),

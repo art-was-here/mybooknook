@@ -482,7 +482,7 @@ class _UserPageState extends State<UserPage> {
               ),
               label: Text(
                 _isFriend
-                    ? 'Remove Friend'
+                    ? 'Unfriend'
                     : _hasPendingRequest
                         ? 'Request Sent'
                         : 'Add Friend',
