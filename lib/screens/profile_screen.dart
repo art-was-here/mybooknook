@@ -915,6 +915,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
+                          filled: true,
+                          fillColor: Theme.of(context).scaffoldBackgroundColor,
                         ),
                       ),
                       const SizedBox(height: 5),
