@@ -75,7 +75,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _menuWidth = 280.0;
   double _dragStartX = 0.0;
   double _currentDragX = 0.0;
-  Widget? _cachedBookList;
 
   // Services
   late final DatabaseService _databaseService;
@@ -87,10 +86,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     print('HomeScreen initState called');
-
-    // Ensure menu is closed by default
-    _isMenuOpen = false;
-    _currentDragX = 0.0;
 
     // Initialize services first
     _initializeFirestore();
@@ -114,30 +109,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
 
     // Listen for auth state changes
-    _authSubscription = FirebaseAuth.instance.authStateChanges().listen(
-      (user) {
-        print('Auth state changed: ${user?.uid ?? "No user"}');
-        if (user != null && mounted) {
-          print('New user authenticated, initializing...');
-          _initializeDefaultList().then((_) {
-            print('Default list initialized, loading books...');
-            _loadBooks();
-          });
-        }
-      },
-      onError: (e, stackTrace) {
-        print('Error in auth state listener: $e');
-        print('Stack trace: $stackTrace');
-        if (mounted) {
-          ErrorService.setError(
-            'Authentication error: $e. Please sign in again.',
-          );
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      },
-    );
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+      print('Auth state changed: ${user?.uid ?? "No user"}');
+      if (user != null && mounted) {
+        print('New user authenticated, initializing...');
+        _initializeDefaultList().then((_) {
+          print('Default list initialized, loading books...');
+          _loadBooks();
+        });
+      }
+    }, onError: (e, stackTrace) {
+      print('Error in auth state listener: $e');
+      print('Stack trace: $stackTrace');
+      if (mounted) {
+        ErrorService.setError(
+            'Authentication error: $e. Please sign in again.');
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    });
 
     _loadSortPreference();
   }
@@ -310,14 +301,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     try {
       final now = DateTime.now();
       await _database!.insert(
-          'lists',
-          {
-            'id': listId,
-            'name': listName,
-            'createdAt': now.toIso8601String(),
-            'lastUpdated': now.toIso8601String(),
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace);
+        'lists',
+        {
+          'id': listId,
+          'name': listName,
+          'createdAt': now.toIso8601String(),
+          'lastUpdated': now.toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     } catch (e) {
       print('Error caching list: $e');
     }
@@ -488,7 +480,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
-      _cachedBookList = null; // Clear cache when initializing a new list
     });
 
     final user = FirebaseAuth.instance.currentUser;
@@ -507,9 +498,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     try {
       print('Creating/updating user document');
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+          {'createdAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
 
       print('Checking for Home list');
       final snapshot = await FirebaseFirestore.instance
@@ -526,7 +516,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             .collection('users')
             .doc(user.uid)
             .collection('lists')
-            .add({'name': 'Home', 'createdAt': FieldValue.serverTimestamp()});
+            .add({
+          'name': 'Home',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
         print('Created Home list with ID: ${listRef.id}');
         if (mounted) {
           setState(() {
@@ -555,11 +548,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
       }
     }
-  }
-
-  // Add method to clear the book list cache
-  void _clearBookListCache() {
-    _cachedBookList = null;
   }
 
   Future<void> _addNewList(BuildContext context) async {
@@ -613,14 +601,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             await _loadBooks();
           }
 
-          ScaffoldMessenger.of(
-            _buildContext,
-          ).showSnackBar(SnackBar(content: Text('Created new list: $result')));
+          ScaffoldMessenger.of(_buildContext).showSnackBar(
+            SnackBar(content: Text('Created new list: $result')),
+          );
         } catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(
-              _buildContext,
-            ).showSnackBar(SnackBar(content: Text('Error creating list: $e')));
+            ScaffoldMessenger.of(_buildContext).showSnackBar(
+              SnackBar(content: Text('Error creating list: $e')),
+            );
           }
         }
       }
@@ -633,8 +621,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       builder: (BuildContext dialogContext) => AlertDialog(
         title: const Text('Delete List'),
         content: const Text(
-          'Are you sure you want to delete this list and all its books?',
-        ),
+            'Are you sure you want to delete this list and all its books?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -705,14 +692,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
           ScaffoldMessenger.of(_buildContext).showSnackBar(
             const SnackBar(
-              content: Text('List and all its books deleted successfully'),
-            ),
+                content: Text('List and all its books deleted successfully')),
           );
         } catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(
-              _buildContext,
-            ).showSnackBar(SnackBar(content: Text('Error deleting list: $e')));
+            ScaffoldMessenger.of(_buildContext).showSnackBar(
+              SnackBar(content: Text('Error deleting list: $e')),
+            );
           }
         }
       }
@@ -834,16 +820,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           }
         } catch (e) {
           if (!mounted) return;
-          ScaffoldMessenger.of(
-            _buildContext,
-          ).showSnackBar(SnackBar(content: Text('Error adding book: $e')));
+          ScaffoldMessenger.of(_buildContext).showSnackBar(
+            SnackBar(content: Text('Error adding book: $e')),
+          );
         }
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        _buildContext,
-      ).showSnackBar(SnackBar(content: Text('Error loading lists: $e')));
+      ScaffoldMessenger.of(_buildContext).showSnackBar(
+        SnackBar(content: Text('Error loading lists: $e')),
+      );
     }
   }
 
@@ -874,15 +860,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             'Building HomeScreen for user: ${user?.email ?? "No user"}, UID: ${user?.uid ?? "No UID"}');
         print(
             'Selected List: $_selectedListName, ID: $_selectedListId, Sort: $_sortPreference');
-        print('Menu state: isOpen=$_isMenuOpen, dragX=$_currentDragX');
-
-        // Cache the book list if it's not already cached
-        if (_cachedBookList == null &&
-            !_isLoading &&
-            _errorMessage == null &&
-            _selectedListId != null) {
-          _cachedBookList = _buildBookList();
-        }
 
         return WillPopScope(
           onWillPop: () async {
@@ -911,254 +888,194 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: Scaffold(
             body: Stack(
               children: [
-                // Main Content (now stays fixed)
-                Positioned.fill(
-                  child: GestureDetector(
-                    // Add gesture detection to open menu with swipe/flick
-                    onHorizontalDragStart: (details) {
-                      _dragStartX = details.globalPosition.dx;
-                    },
-                    onHorizontalDragUpdate: (details) {
-                      // Only allow opening from left edge
-                      if (_dragStartX < 20 && !_isMenuOpen) {
-                        setState(() {
-                          final delta = details.globalPosition.dx - _dragStartX;
-                          if (delta > 0) {
-                            // Only track right swipes
-                            _currentDragX = delta.clamp(0.0, _menuWidth);
-                          }
-                        });
-                      }
-                    },
-                    onHorizontalDragEnd: (details) {
-                      final velocity = details.primaryVelocity ?? 0;
-
-                      // Only update menu state, don't trigger full rebuild
-                      setState(() {
-                        // Fast swipe right or dragged enough
-                        if (velocity > 300 || _currentDragX > _menuWidth / 3) {
-                          _isMenuOpen = true;
-                        } else {
-                          _isMenuOpen = false;
-                        }
-                        _currentDragX = _isMenuOpen ? _menuWidth : 0.0;
-                      });
-                    },
-                    child: Material(
-                      color: Theme.of(context).scaffoldBackgroundColor,
-                      child: Column(
-                        children: [
-                          AppBar(
-                            title: PopupMenuButton<String>(
-                              onSelected: (value) async {
-                                if (value == 'add_list' && mounted) {
-                                  print('Add new list selected');
-                                  await _addNewList(context);
-                                }
-                              },
-                              itemBuilder: (BuildContext popupContext) => [
-                                PopupMenuItem<String>(
-                                  value: 'add_list',
-                                  child: Row(
-                                    children: const [
-                                      Icon(Icons.add),
-                                      SizedBox(width: 8),
-                                      Text('Add New List'),
-                                    ],
+                // Side Menu
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: _menuWidth,
+                  child: Container(
+                    color: Color.lerp(
+                      Theme.of(context).scaffoldBackgroundColor,
+                      Colors.white,
+                      0.03,
+                    ),
+                    child: ListView(
+                      padding: const EdgeInsets.only(top: 16.0),
+                      children: [
+                        const SizedBox(height: 40), // Add space for AppBar
+                        ListTile(
+                          leading: Icon(Icons.home, color: widget.accentColor),
+                          title: const Text('Library'),
+                          onTap: () {
+                            setState(() {
+                              _selectedListId = null;
+                              _selectedListName = 'Library';
+                              _isMenuOpen = false;
+                              _currentDragX = 0.0;
+                            });
+                            _initializeDefaultList();
+                            _loadBooks();
+                          },
+                        ),
+                        const Divider(),
+                        ListTile(
+                          leading:
+                              Icon(Icons.person, color: widget.accentColor),
+                          title: const Text('Profile'),
+                          onTap: () {
+                            Navigator.pushNamed(context, '/profile');
+                            setState(() {
+                              _isMenuOpen = false;
+                              _currentDragX = 0.0;
+                            });
+                          },
+                        ),
+                        ListTile(
+                          leading:
+                              Icon(Icons.search, color: widget.accentColor),
+                          title: const Text('Search'),
+                          onTap: () {
+                            Navigator.pushNamed(context, '/search');
+                            setState(() {
+                              _isMenuOpen = false;
+                              _currentDragX = 0.0;
+                            });
+                          },
+                        ),
+                        ListTile(
+                          leading: Icon(Icons.notifications,
+                              color: widget.accentColor),
+                          title: Row(
+                            children: [
+                              const Text('Notifications'),
+                              if (_hasUnreadNotifications) ...[
+                                const Spacer(),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: widget.accentColor,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    _notificationCount > 100
+                                        ? '100+'
+                                        : '$_notificationCount',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
-                                PopupMenuItem<String>(
-                                  enabled: false,
-                                  height: 0,
-                                  padding: EdgeInsets.zero,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10),
-                                    child: Divider(height: 1),
-                                  ),
-                                ),
-                                ..._buildListMenuItems(context),
                               ],
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(_selectedListName),
-                                  const Icon(Icons.arrow_drop_down, size: 20),
-                                ],
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              offset: const Offset(0, 40),
-                              constraints: BoxConstraints(
-                                minWidth: MediaQuery.of(context).size.width,
-                                maxWidth: MediaQuery.of(context).size.width,
-                              ),
-                            ),
-                            actions: [
-                              PopupMenuButton<String>(
-                                icon: _isProfileImageLoading
-                                    ? const CircleAvatar(
-                                        radius: 18,
-                                        child: CircularProgressIndicator(),
-                                      )
-                                    : Stack(
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 18,
-                                            backgroundImage:
-                                                _cachedProfileImage != null
-                                                    ? MemoryImage(base64Decode(
-                                                        _cachedProfileImage!))
-                                                    : null,
-                                            child: _cachedProfileImage == null
-                                                ? const Icon(Icons.person)
-                                                : null,
-                                          ),
-                                          if (_hasUnreadNotifications)
-                                            Positioned(
-                                              right: 0,
-                                              bottom: 0,
-                                              child: Container(
-                                                width: 12,
-                                                height: 12,
-                                                decoration: BoxDecoration(
-                                                  color: Theme.of(context)
-                                                      .colorScheme
-                                                      .error,
-                                                  shape: BoxShape.circle,
-                                                  border: Border.all(
-                                                    color: Theme.of(context)
-                                                        .scaffoldBackgroundColor,
-                                                    width: 2,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                onSelected: (String value) {
-                                  switch (value) {
-                                    case 'profile':
-                                      Navigator.pushNamed(context, '/profile');
-                                      break;
-                                    case 'search':
-                                      Navigator.pushNamed(context, '/search');
-                                      break;
-                                    case 'notifications':
-                                      Navigator.pushNamed(
-                                          context, '/notifications');
-                                      break;
-                                    case 'messages':
-                                      Navigator.pushNamed(context, '/messages');
-                                      break;
-                                    case 'settings':
-                                      Navigator.pushNamed(context, '/settings');
-                                      break;
-                                    case 'logout':
-                                      _showLogoutDialog();
-                                      break;
+                            ],
+                          ),
+                          onTap: () {
+                            Navigator.pushNamed(context, '/notifications');
+                            setState(() {
+                              _isMenuOpen = false;
+                              _currentDragX = 0.0;
+                            });
+                          },
+                        ),
+                        ListTile(
+                          leading:
+                              Icon(Icons.message, color: widget.accentColor),
+                          title: const Text('Messages'),
+                          onTap: () {
+                            Navigator.pushNamed(context, '/messages');
+                            setState(() {
+                              _isMenuOpen = false;
+                              _currentDragX = 0.0;
+                            });
+                          },
+                        ),
+                        const Divider(),
+                        ListTile(
+                          leading:
+                              Icon(Icons.settings, color: widget.accentColor),
+                          title: const Text('Settings'),
+                          onTap: () {
+                            Navigator.pushNamed(context, '/settings');
+                            setState(() {
+                              _isMenuOpen = false;
+                              _currentDragX = 0.0;
+                            });
+                          },
+                        ),
+                        ListTile(
+                          leading:
+                              Icon(Icons.logout, color: widget.accentColor),
+                          title: const Text('Logout'),
+                          onTap: () {
+                            _showLogoutDialog();
+                            setState(() {
+                              _isMenuOpen = false;
+                              _currentDragX = 0.0;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Main Content with Slide Effect
+                GestureDetector(
+                  onHorizontalDragStart: (details) {
+                    _dragStartX = details.globalPosition.dx;
+                  },
+                  onHorizontalDragUpdate: (details) {
+                    setState(() {
+                      _currentDragX = (_isMenuOpen ? _menuWidth : 0.0) +
+                          (details.globalPosition.dx - _dragStartX);
+                      _currentDragX = _currentDragX.clamp(0.0, _menuWidth);
+                    });
+                  },
+                  onHorizontalDragEnd: (details) {
+                    setState(() {
+                      if (_currentDragX > _menuWidth / 2) {
+                        _isMenuOpen = true;
+                        _currentDragX = _menuWidth;
+                      } else {
+                        _isMenuOpen = false;
+                        _currentDragX = 0.0;
+                      }
+                    });
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    transform: Matrix4.translationValues(_currentDragX, 0.0, 0.0),
+                    child: Material(
+                      elevation: (_currentDragX > 0 || _isMenuOpen) ? 8.0 : 0.0,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(16.0),
+                        bottomLeft: Radius.circular(16.0),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(16.0),
+                          bottomLeft: Radius.circular(16.0),
+                        ),
+                        child: Column(
+                          children: [
+                            AppBar(
+                              title: PopupMenuButton<String>(
+                                onSelected: (value) async {
+                                  if (value == 'add_list' && mounted) {
+                                    print('Add new list selected');
+                                    await _addNewList(context);
                                   }
                                 },
-                                constraints: BoxConstraints(
-                                  minWidth: MediaQuery.of(context).size.width,
-                                  maxWidth: MediaQuery.of(context).size.width,
-                                ),
-                                position: PopupMenuPosition.under,
-                                offset: const Offset(0, 10),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                itemBuilder: (BuildContext context) =>
-                                    <PopupMenuEntry<String>>[
-                                  PopupMenuItem(
-                                    value: 'profile',
+                                itemBuilder: (BuildContext popupContext) => [
+                                  PopupMenuItem<String>(
+                                    value: 'add_list',
                                     child: Row(
-                                      children: [
-                                        Icon(Icons.person,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary),
-                                        const SizedBox(width: 8),
-                                        const Text('Go to Profile'),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'search',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.search,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary),
-                                        const SizedBox(width: 8),
-                                        const Text('Search'),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'notifications',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.notifications,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary),
-                                        const SizedBox(width: 8),
-                                        const Text('Notifications'),
-                                        if (_hasUnreadNotifications) ...[
-                                          const Spacer(),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 8, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .primary,
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
-                                            child: Text(
-                                              _notificationCount > 100
-                                                  ? '100+'
-                                                  : '$_notificationCount',
-                                              style: TextStyle(
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .onPrimary,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'messages',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.message,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary),
-                                        const SizedBox(width: 8),
-                                        const Text('Messages'),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'settings',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.settings,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary),
-                                        const SizedBox(width: 8),
-                                        const Text('Settings'),
+                                      children: const [
+                                        Icon(Icons.add),
+                                        SizedBox(width: 8),
+                                        Text('Add New List'),
                                       ],
                                     ),
                                   ),
@@ -1172,22 +1089,224 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       child: Divider(height: 1),
                                     ),
                                   ),
-                                  PopupMenuItem<String>(
-                                    value: 'logout',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.logout,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary),
-                                        const SizedBox(width: 8),
-                                        const Text('Logout'),
-                                      ],
-                                    ),
-                                  ),
+                                  ..._buildListMenuItems(context),
                                 ],
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(_selectedListName),
+                                    const Icon(Icons.arrow_drop_down, size: 20),
+                                  ],
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                offset: const Offset(0, 40),
+                                constraints: BoxConstraints(
+                                  minWidth: MediaQuery.of(context).size.width,
+                                  maxWidth: MediaQuery.of(context).size.width,
+                                ),
                               ),
-                            ],
+                              actions: [
+                                PopupMenuButton<String>(
+                                  icon: _isProfileImageLoading
+                                      ? const CircleAvatar(
+                                          radius: 18,
+                                          child: CircularProgressIndicator(),
+                                        )
+                                      : Stack(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 18,
+                                              backgroundImage:
+                                                  _cachedProfileImage != null
+                                                      ? MemoryImage(base64Decode(
+                                                              _cachedProfileImage!))
+                                                          as ImageProvider
+                                                      : null,
+                                              child: _cachedProfileImage == null
+                                                  ? const Icon(Icons.person)
+                                                  : null,
+                                            ),
+                                            if (_hasUnreadNotifications)
+                                              Positioned(
+                                                right: 0,
+                                                bottom: 0,
+                                                child: Container(
+                                                  width: 12,
+                                                  height: 12,
+                                                  decoration: BoxDecoration(
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .error,
+                                                    shape: BoxShape.circle,
+                                                    border: Border.all(
+                                                      color: Theme.of(context)
+                                                          .scaffoldBackgroundColor,
+                                                      width: 2,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                  onSelected: (String value) {
+                                    switch (value) {
+                                      case 'profile':
+                                        Navigator.pushNamed(
+                                            context, '/profile');
+                                        break;
+                                      case 'search':
+                                        Navigator.pushNamed(context, '/search');
+                                        break;
+                                      case 'notifications':
+                                        Navigator.pushNamed(
+                                            context, '/notifications');
+                                        break;
+                                      case 'messages':
+                                        Navigator.pushNamed(
+                                            context, '/messages');
+                                        break;
+                                      case 'settings':
+                                        Navigator.pushNamed(
+                                            context, '/settings');
+                                        break;
+                                      case 'logout':
+                                        _showLogoutDialog();
+                                        break;
+                                    }
+                                  },
+                                  constraints: BoxConstraints(
+                                    minWidth: MediaQuery.of(context).size.width,
+                                    maxWidth: MediaQuery.of(context).size.width,
+                                  ),
+                                  position: PopupMenuPosition.under,
+                                  offset: const Offset(0, 10),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  itemBuilder: (BuildContext context) =>
+                                      <PopupMenuEntry<String>>[
+                                    PopupMenuItem(
+                                      value: 'profile',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.person,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary),
+                                          const SizedBox(width: 8),
+                                          const Text('Go to Profile'),
+                                        ],
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'search',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.search,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary),
+                                          const SizedBox(width: 8),
+                                          const Text('Search'),
+                                        ],
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'notifications',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.notifications,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary),
+                                          const SizedBox(width: 8),
+                                          const Text('Notifications'),
+                                          if (_hasUnreadNotifications) ...[
+                                            const Spacer(),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .primary,
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              ),
+                                              child: Text(
+                                                _notificationCount > 100
+                                                    ? '100+'
+                                                    : '$_notificationCount',
+                                                style: TextStyle(
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .onPrimary,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'messages',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.message,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary),
+                                          const SizedBox(width: 8),
+                                          const Text('Messages'),
+                                        ],
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'settings',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.settings,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary),
+                                          const SizedBox(width: 8),
+                                          const Text('Settings'),
+                                        ],
+                                      ),
+                                    ),
+                                    PopupMenuItem<String>(
+                                      enabled: false,
+                                      height: 0,
+                                      padding: EdgeInsets.zero,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10),
+                                        child: Divider(height: 1),
+                                      ),
+                                    ),
+                                    PopupMenuItem<String>(
+                                      value: 'logout',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.logout,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary),
+                                          const SizedBox(width: 8),
+                                          const Text('Logout'),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
                           Expanded(
                             child: _isLoading
@@ -1258,233 +1377,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                                       await FirebaseAuth
                                                           .instance
                                                           .setPersistence(
-                                                              Persistence.NONE);
+                                                              Persistence
+                                                                  .NONE);
                                                       print(
                                                           'Signed out and cleared persistence');
                                                     }
                                                   },
-                                                  child: const Text('Sign Out'),
+                                                  child:
+                                                      const Text('Sign Out'),
                                                 ),
                                               ],
                                             ),
                                           )
-                                        : _cachedBookList!,
+                                        : _buildBookList(),
                           ),
                         ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Side Menu (now slides on top)
-                AnimatedPositioned(
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOutQuad,
-                  left: _isMenuOpen ? 0 : -_menuWidth + _currentDragX,
-                  top: 0,
-                  bottom: 0,
-                  width: _menuWidth,
-                  child: GestureDetector(
-                    // Add direct horizontal drag detection for the menu
-                    onHorizontalDragStart: (details) {
-                      print("Menu drag start: ${details.globalPosition.dx}");
-                      _dragStartX = details.globalPosition.dx;
-                    },
-                    onHorizontalDragUpdate: (details) {
-                      print(
-                          "Menu drag update: ${details.globalPosition.dx}, delta: ${details.globalPosition.dx - _dragStartX}");
-                      setState(() {
-                        final delta = details.globalPosition.dx - _dragStartX;
-                        // Only allow left swipes (negative delta) when menu is open
-                        if (delta < 0) {
-                          _currentDragX = _menuWidth + delta;
-                          if (_currentDragX < 0) _currentDragX = 0;
-                        }
-                      });
-                    },
-                    onHorizontalDragEnd: (details) {
-                      print(
-                          "Menu drag end, velocity: ${details.primaryVelocity}, current drag: $_currentDragX");
-                      final velocity = details.primaryVelocity ?? 0;
-
-                      setState(() {
-                        // Close if swiped left with enough velocity or distance
-                        if (velocity < -300 ||
-                            _currentDragX < _menuWidth * 0.5) {
-                          _isMenuOpen = false;
-                          _currentDragX = 0.0;
-                          print("Closing menu from swipe");
-                        } else {
-                          // Otherwise snap back to open
-                          _isMenuOpen = true;
-                          _currentDragX = _menuWidth;
-                          print("Keeping menu open");
-                        }
-                      });
-                    },
-                    child: Material(
-                      elevation: 16,
-                      color: Colors.transparent,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Color.lerp(
-                            Theme.of(context).scaffoldBackgroundColor,
-                            Colors.white,
-                            0.03,
-                          ),
-                          borderRadius: const BorderRadius.only(
-                            topRight: Radius.circular(17.6), // Increased by 10%
-                            bottomRight:
-                                Radius.circular(17.6), // Increased by 10%
-                          ),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 60, horizontal: 8),
-                        child: ListView(
-                          padding: const EdgeInsets.only(top: 8),
-                          children: [
-                            ListTile(
-                              leading:
-                                  Icon(Icons.home, color: widget.accentColor),
-                              title: const Text('Library'),
-                              onTap: () {
-                                setState(() {
-                                  _selectedListId = null;
-                                  _selectedListName = 'Library';
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                  _clearBookListCache(); // Clear cache when changing lists
-                                });
-                                _initializeDefaultList();
-                                _loadBooks();
-                              },
-                            ),
-                            const Divider(),
-                            ListTile(
-                              leading:
-                                  Icon(Icons.person, color: widget.accentColor),
-                              title: const Text('Profile'),
-                              onTap: () {
-                                Navigator.pushNamed(context, '/profile');
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                              },
-                            ),
-                            ListTile(
-                              leading:
-                                  Icon(Icons.search, color: widget.accentColor),
-                              title: const Text('Search'),
-                              onTap: () {
-                                Navigator.pushNamed(context, '/search');
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                              },
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.notifications,
-                                  color: widget.accentColor),
-                              title: Row(
-                                children: [
-                                  const Text('Notifications'),
-                                  if (_hasUnreadNotifications) ...[
-                                    const Spacer(),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: widget.accentColor,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        _notificationCount > 100
-                                            ? '100+'
-                                            : '$_notificationCount',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              onTap: () {
-                                Navigator.pushNamed(context, '/notifications');
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                              },
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.message,
-                                  color: widget.accentColor),
-                              title: const Text('Messages'),
-                              onTap: () {
-                                Navigator.pushNamed(context, '/messages');
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                              },
-                            ),
-                            const Divider(),
-                            ListTile(
-                              leading: Icon(Icons.settings,
-                                  color: widget.accentColor),
-                              title: const Text('Settings'),
-                              onTap: () {
-                                Navigator.pushNamed(context, '/settings');
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                              },
-                            ),
-                            ListTile(
-                              leading:
-                                  Icon(Icons.logout, color: widget.accentColor),
-                              title: const Text('Logout'),
-                              onTap: () {
-                                _showLogoutDialog();
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Semi-transparent overlay that appears during drag
-                Positioned.fill(
-                  child: IgnorePointer(
-                    ignoring: !_isMenuOpen && _currentDragX == 0,
-                    child: AnimatedOpacity(
-                      opacity:
-                          _isMenuOpen ? 0.3 : _currentDragX / _menuWidth * 0.3,
-                      duration: const Duration(milliseconds: 250),
-                      child: GestureDetector(
-                        onTap: () {
-                          print("Overlay tapped");
-                          // Only update menu state, don't trigger full rebuild
-                          setState(() {
-                            _isMenuOpen = false;
-                            _currentDragX = 0.0;
-                          });
-                        },
-                        child: Container(
-                          color: Colors.black,
-                        ),
                       ),
                     ),
                   ),
@@ -1510,12 +1417,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         print('Toggling FAB closed');
                         state.toggle();
                       }
-                      BookSearchSheet.show(
-                        context,
-                        _selectedListId,
-                        _selectedListName,
-                        _bookService!,
-                      );
+                      BookSearchSheet.show(context, _selectedListId,
+                          _selectedListName, _bookService!);
                     },
                     child: const Icon(Icons.search),
                     tooltip: 'Search by Title or ISBN',
@@ -1721,9 +1624,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         print('Book ${book.title} belongs to list: $listName (ID: $listId)');
         print('Book data: $data');
 
-        _loadedBooks.add(
-          BookWithList(book: book, listId: listId, listName: listName),
-        );
+        _loadedBooks.add(BookWithList(
+          book: book,
+          listId: listId,
+          listName: listName,
+        ));
       }
 
       // Sort books based on current sort order
@@ -1735,8 +1640,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _cachedBookList =
-              _buildBookList(); // Update cached book list when data changes
         });
       }
     } catch (e) {
@@ -1745,11 +1648,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         setState(() {
           _isLoading = false;
           _errorMessage = 'Error loading books: $e';
-          _cachedBookList = null; // Clear cache on error
         });
-        ScaffoldMessenger.of(
-          _buildContext,
-        ).showSnackBar(SnackBar(content: Text('Error loading books: $e')));
+        ScaffoldMessenger.of(_buildContext).showSnackBar(
+          SnackBar(content: Text('Error loading books: $e')),
+        );
       }
     }
   }
@@ -1770,7 +1672,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             await _loadBooks();
           }
         },
-        child: const ListTile(title: Text('Library')),
+        child: const ListTile(
+          title: Text('Library'),
+        ),
       ),
       PopupMenuItem<String>(
         enabled: false,
@@ -1793,20 +1697,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   .orderBy('createdAt')
                   .snapshots()
               : Stream.empty(),
-          builder: (
-            BuildContext streamContext,
-            AsyncSnapshot<QuerySnapshot> snapshot,
-          ) {
+          builder: (BuildContext streamContext,
+              AsyncSnapshot<QuerySnapshot> snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const ListTile(title: Text('Loading lists...'));
+              return const ListTile(
+                title: Text('Loading lists...'),
+              );
             }
 
             if (snapshot.hasError) {
-              return ListTile(title: Text('Error: ${snapshot.error}'));
+              return ListTile(
+                title: Text('Error: ${snapshot.error}'),
+              );
             }
 
             if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-              return const ListTile(title: Text('No lists found'));
+              return const ListTile(
+                title: Text('No lists found'),
+              );
             }
 
             return Column(
@@ -1900,9 +1808,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _errorMessage = 'Error scanning book: $e';
         _isLoading = false;
       });
-      ScaffoldMessenger.of(
-        _buildContext,
-      ).showSnackBar(SnackBar(content: Text('Error scanning book: $e')));
+      ScaffoldMessenger.of(_buildContext).showSnackBar(
+        SnackBar(content: Text('Error scanning book: $e')),
+      );
     }
   }
 
@@ -1955,14 +1863,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     try {
       await _bookService!.addBookToList(book, listId);
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        _buildContext,
-      ).showSnackBar(const SnackBar(content: Text('Book added successfully')));
+      ScaffoldMessenger.of(_buildContext).showSnackBar(
+        const SnackBar(content: Text('Book added successfully')),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        _buildContext,
-      ).showSnackBar(SnackBar(content: Text('Error adding book: $e')));
+      ScaffoldMessenger.of(_buildContext).showSnackBar(
+        SnackBar(content: Text('Error adding book: $e')),
+      );
     }
   }
 
@@ -2008,13 +1916,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           print('Found profile image in Firebase, caching it');
           // Cache the image
           await prefs.setString(
-            '${userPrefix}cachedProfileImage',
-            profileImage,
-          );
-          await prefs.setInt(
-            '${userPrefix}lastImageUpdate',
-            DateTime.now().millisecondsSinceEpoch,
-          );
+              '${userPrefix}cachedProfileImage', profileImage);
+          await prefs.setInt('${userPrefix}lastImageUpdate',
+              DateTime.now().millisecondsSinceEpoch);
 
           if (mounted) {
             setState(() {
@@ -2120,7 +2024,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
+          return Center(
+            child: Text('Error: ${snapshot.error}'),
+          );
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -2168,9 +2074,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           print('Book ${book.title} belongs to list: $listName (ID: $listId)');
           print('Book data: $data');
 
-          groupedBooks.putIfAbsent(listName, () => []).add(
-                BookWithList(book: book, listId: listId, listName: listName),
-              );
+          groupedBooks.putIfAbsent(listName, () => []).add(BookWithList(
+                book: book,
+                listId: listId,
+                listName: listName,
+              ));
         }
 
         final sortedListNames = groupedBooks.keys.toList()..sort();
