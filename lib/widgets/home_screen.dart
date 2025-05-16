@@ -1333,132 +1333,208 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             0.03,
                           ),
                           borderRadius: const BorderRadius.only(
-                            topRight: Radius.circular(17.6), // Increased by 10%
-                            bottomRight:
-                                Radius.circular(17.6), // Increased by 10%
+                            topRight: Radius.circular(17.6),
+                            bottomRight: Radius.circular(17.6),
                           ),
                         ),
                         padding: const EdgeInsets.symmetric(
                             vertical: 60, horizontal: 8),
-                        child: ListView(
-                          padding: const EdgeInsets.only(top: 8),
-                          children: [
-                            ListTile(
-                              leading:
-                                  Icon(Icons.home, color: widget.accentColor),
-                              title: const Text('Library'),
-                              onTap: () {
-                                setState(() {
-                                  _selectedListId = null;
-                                  _selectedListName = 'Library';
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                  _clearBookListCache(); // Clear cache when changing lists
-                                });
-                                _initializeDefaultList();
-                                _loadBooks();
-                              },
-                            ),
-                            const Divider(),
-                            ListTile(
-                              leading:
-                                  Icon(Icons.person, color: widget.accentColor),
-                              title: const Text('Profile'),
-                              onTap: () {
-                                Navigator.pushNamed(context, '/profile');
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                              },
-                            ),
-                            ListTile(
-                              leading:
-                                  Icon(Icons.search, color: widget.accentColor),
-                              title: const Text('Search'),
-                              onTap: () {
-                                Navigator.pushNamed(context, '/search');
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                              },
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.notifications,
-                                  color: widget.accentColor),
-                              title: Row(
-                                children: [
-                                  const Text('Notifications'),
-                                  if (_hasUnreadNotifications) ...[
-                                    const Spacer(),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: widget.accentColor,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        _notificationCount > 100
-                                            ? '100+'
-                                            : '$_notificationCount',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                        ),
+                        child: Center(
+                          child: ListView(
+                            padding: EdgeInsets.zero,
+                            shrinkWrap: true,
+                            children: [
+                              // Profile Section
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16.0, vertical: 8.0),
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 24,
+                                      backgroundImage:
+                                          _cachedProfileImage != null
+                                              ? MemoryImage(base64Decode(
+                                                  _cachedProfileImage!))
+                                              : null,
+                                      child: _cachedProfileImage == null
+                                          ? const Icon(Icons.person)
+                                          : null,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: StreamBuilder<DocumentSnapshot>(
+                                        stream: FirebaseAuth
+                                                    .instance.currentUser !=
+                                                null
+                                            ? FirebaseFirestore.instance
+                                                .collection('users')
+                                                .doc(FirebaseAuth
+                                                    .instance.currentUser!.uid)
+                                                .snapshots()
+                                            : Stream.empty(),
+                                        builder: (context, snapshot) {
+                                          if (snapshot.hasData &&
+                                              snapshot.data != null) {
+                                            final data = snapshot.data!.data()
+                                                as Map<String, dynamic>?;
+                                            final username =
+                                                data?['username'] as String? ??
+                                                    'user';
+                                            return Text(
+                                              '@$username',
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .titleMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                              overflow: TextOverflow.ellipsis,
+                                            );
+                                          }
+                                          return const Text('@user');
+                                        },
                                       ),
                                     ),
                                   ],
-                                ],
+                                ),
                               ),
-                              onTap: () {
-                                Navigator.pushNamed(context, '/notifications');
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                              },
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.message,
-                                  color: widget.accentColor),
-                              title: const Text('Messages'),
-                              onTap: () {
-                                Navigator.pushNamed(context, '/messages');
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                              },
-                            ),
-                            const Divider(),
-                            ListTile(
-                              leading: Icon(Icons.settings,
-                                  color: widget.accentColor),
-                              title: const Text('Settings'),
-                              onTap: () {
-                                Navigator.pushNamed(context, '/settings');
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                              },
-                            ),
-                            ListTile(
-                              leading:
-                                  Icon(Icons.logout, color: widget.accentColor),
-                              title: const Text('Logout'),
-                              onTap: () {
-                                _showLogoutDialog();
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                              },
-                            ),
-                          ],
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 5.0),
+                                child: const Divider(),
+                              ),
+                              ListTile(
+                                leading: Icon(Icons.home,
+                                    color:
+                                        Theme.of(context).colorScheme.primary),
+                                title: const Text('Library'),
+                                onTap: () {
+                                  setState(() {
+                                    _selectedListId = null;
+                                    _selectedListName = 'Library';
+                                    _isMenuOpen = false;
+                                    _currentDragX = 0.0;
+                                    _clearBookListCache();
+                                  });
+                                  _initializeDefaultList();
+                                  _loadBooks();
+                                },
+                              ),
+                              ListTile(
+                                leading: Icon(Icons.person,
+                                    color:
+                                        Theme.of(context).colorScheme.primary),
+                                title: const Text('Profile'),
+                                onTap: () {
+                                  Navigator.pushNamed(context, '/profile');
+                                  setState(() {
+                                    _isMenuOpen = false;
+                                    _currentDragX = 0.0;
+                                  });
+                                },
+                              ),
+                              ListTile(
+                                leading: Icon(Icons.search,
+                                    color:
+                                        Theme.of(context).colorScheme.primary),
+                                title: const Text('Search'),
+                                onTap: () {
+                                  Navigator.pushNamed(context, '/search');
+                                  setState(() {
+                                    _isMenuOpen = false;
+                                    _currentDragX = 0.0;
+                                  });
+                                },
+                              ),
+                              ListTile(
+                                leading: Icon(Icons.notifications,
+                                    color:
+                                        Theme.of(context).colorScheme.primary),
+                                title: Row(
+                                  children: [
+                                    const Text('Notifications'),
+                                    if (_hasUnreadNotifications) ...[
+                                      const Spacer(),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          _notificationCount > 100
+                                              ? '100+'
+                                              : '$_notificationCount',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                onTap: () {
+                                  Navigator.pushNamed(
+                                      context, '/notifications');
+                                  setState(() {
+                                    _isMenuOpen = false;
+                                    _currentDragX = 0.0;
+                                  });
+                                },
+                              ),
+                              ListTile(
+                                leading: Icon(Icons.message,
+                                    color:
+                                        Theme.of(context).colorScheme.primary),
+                                title: const Text('Messages'),
+                                onTap: () {
+                                  Navigator.pushNamed(context, '/messages');
+                                  setState(() {
+                                    _isMenuOpen = false;
+                                    _currentDragX = 0.0;
+                                  });
+                                },
+                              ),
+                              ListTile(
+                                leading: Icon(Icons.settings,
+                                    color:
+                                        Theme.of(context).colorScheme.primary),
+                                title: const Text('Settings'),
+                                onTap: () {
+                                  Navigator.pushNamed(context, '/settings');
+                                  setState(() {
+                                    _isMenuOpen = false;
+                                    _currentDragX = 0.0;
+                                  });
+                                },
+                              ),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 5.0),
+                                child: const Divider(),
+                              ),
+                              ListTile(
+                                leading: Icon(Icons.logout,
+                                    color:
+                                        Theme.of(context).colorScheme.primary),
+                                title: const Text('Logout'),
+                                onTap: () {
+                                  _showLogoutDialog();
+                                  setState(() {
+                                    _isMenuOpen = false;
+                                    _currentDragX = 0.0;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -1501,7 +1577,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   padding: const EdgeInsets.only(bottom: 8.0),
                   child: FloatingActionButton.small(
                     heroTag: 'search_fab',
-                    backgroundColor: widget.accentColor.withOpacity(0.8),
+                    backgroundColor:
+                        Theme.of(context).colorScheme.primary.withOpacity(0.8),
                     foregroundColor: Colors.white,
                     onPressed: () {
                       print('Search FAB pressed');
@@ -1523,7 +1600,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
                 FloatingActionButton.small(
                   heroTag: 'scan_fab',
-                  backgroundColor: widget.accentColor.withOpacity(0.8),
+                  backgroundColor:
+                      Theme.of(context).colorScheme.primary.withOpacity(0.8),
                   foregroundColor: Colors.white,
                   onPressed: () {
                     print('Scan FAB pressed');
@@ -1541,13 +1619,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               openButtonBuilder: RotateFloatingActionButtonBuilder(
                 child: const Icon(Icons.add),
                 foregroundColor: Colors.white,
-                backgroundColor: widget.accentColor,
+                backgroundColor: Theme.of(context).colorScheme.primary,
                 shape: const CircleBorder(),
               ),
               closeButtonBuilder: DefaultFloatingActionButtonBuilder(
                 child: const Icon(Icons.close),
                 foregroundColor: Colors.white,
-                backgroundColor: widget.accentColor,
+                backgroundColor: Theme.of(context).colorScheme.primary,
                 shape: const CircleBorder(),
               ),
             ),

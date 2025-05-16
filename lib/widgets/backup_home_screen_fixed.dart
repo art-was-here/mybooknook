@@ -51,7 +51,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   const SizedBox(height: 40), // Add space for AppBar
                   ListTile(
-                    leading: Icon(Icons.home, color: widget.accentColor),
+                    leading: Icon(Icons.home,
+                        color: Theme.of(context).colorScheme.primary),
                     title: const Text('Library'),
                     onTap: () {
                       setState(() {
@@ -62,7 +63,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const Divider(),
                   ListTile(
-                    leading: Icon(Icons.person, color: widget.accentColor),
+                    leading: Icon(Icons.person,
+                        color: Theme.of(context).colorScheme.primary),
                     title: const Text('Profile'),
                     onTap: () {
                       setState(() {
@@ -72,7 +74,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                   ListTile(
-                    leading: Icon(Icons.search, color: widget.accentColor),
+                    leading: Icon(Icons.search,
+                        color: Theme.of(context).colorScheme.primary),
                     title: const Text('Search'),
                     onTap: () {
                       setState(() {

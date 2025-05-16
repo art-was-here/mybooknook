@@ -88,7 +88,7 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
         width: widget.size,
         height: widget.size,
         child: CircularProgressIndicator(
-          color: widget.accentColor,
+          color: Theme.of(context).colorScheme.primary,
         ),
       );
     }
@@ -98,7 +98,7 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
       height: widget.size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: widget.accentColor.withOpacity(0.1),
+        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
         image: _cachedProfileImage != null
             ? DecorationImage(
                 image: NetworkImage(_cachedProfileImage!),
@@ -110,7 +110,7 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
           ? Icon(
               Icons.person,
               size: widget.size * 0.6,
-              color: widget.accentColor,
+              color: Theme.of(context).colorScheme.primary,
             )
           : null,
     );
