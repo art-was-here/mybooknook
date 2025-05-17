@@ -957,6 +957,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     child: Column(
                       children: [
                         AppBar(
+                          automaticallyImplyLeading: false,
                           title: PopupMenuButton<String>(
                             onSelected: (value) async {
                               if (value == 'add_list' && mounted) {
@@ -1004,8 +1005,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             ),
                           ),
                           actions: [
-                            PopupMenuButton<String>(
-                              icon: _isProfileImageLoading
+                            Padding(
+                              padding: const EdgeInsets.only(right: 15.0),
+                              child: _isProfileImageLoading
                                   ? const CircleAvatar(
                                       radius: 18,
                                       child: CircularProgressIndicator(),
@@ -1045,154 +1047,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                           ),
                                       ],
                                     ),
-                              onSelected: (String value) {
-                                switch (value) {
-                                  case 'profile':
-                                    _navigateToRoute('/profile');
-                                    break;
-                                  case 'search':
-                                    _navigateToRoute('/search');
-                                    break;
-                                  case 'notifications':
-                                    _navigateToRoute('/notifications');
-                                    break;
-                                  case 'messages':
-                                    _navigateToRoute('/messages');
-                                    break;
-                                  case 'settings':
-                                    _navigateToRoute('/settings');
-                                    break;
-                                  case 'logout':
-                                    _showLogoutDialog();
-                                    break;
-                                }
-                              },
-                              constraints: BoxConstraints(
-                                minWidth: MediaQuery.of(context).size.width,
-                                maxWidth: MediaQuery.of(context).size.width,
-                              ),
-                              position: PopupMenuPosition.under,
-                              offset: const Offset(0, 10),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              itemBuilder: (BuildContext context) =>
-                                  <PopupMenuEntry<String>>[
-                                PopupMenuItem(
-                                  value: 'profile',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.person,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary),
-                                      const SizedBox(width: 8),
-                                      const Text('Go to Profile'),
-                                    ],
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'search',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.search,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary),
-                                      const SizedBox(width: 8),
-                                      const Text('Search'),
-                                    ],
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'notifications',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.notifications,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary),
-                                      const SizedBox(width: 8),
-                                      const Text('Notifications'),
-                                      if (_hasUnreadNotifications) ...[
-                                        const Spacer(),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary,
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                          ),
-                                          child: Text(
-                                            _notificationCount > 100
-                                                ? '100+'
-                                                : '$_notificationCount',
-                                            style: TextStyle(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .onPrimary,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'messages',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.message,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary),
-                                      const SizedBox(width: 8),
-                                      const Text('Messages'),
-                                    ],
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'settings',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.settings,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary),
-                                      const SizedBox(width: 8),
-                                      const Text('Settings'),
-                                    ],
-                                  ),
-                                ),
-                                PopupMenuItem<String>(
-                                  enabled: false,
-                                  height: 0,
-                                  padding: EdgeInsets.zero,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10),
-                                    child: Divider(height: 1),
-                                  ),
-                                ),
-                                PopupMenuItem<String>(
-                                  value: 'logout',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.logout,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary),
-                                      const SizedBox(width: 8),
-                                      const Text('Logout'),
-                                    ],
-                                  ),
-                                ),
-                              ],
                             ),
                           ],
                         ),
@@ -1978,12 +1832,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
 
     return ListView.builder(
-      itemCount: displayItems.length + 1,
+      itemCount: displayItems.length,
       itemBuilder: (BuildContext listContext, int index) {
-        if (index == 0) {
-          return const SizedBox(height: 15);
-        }
-        final item = displayItems[index - 1];
+        final item = displayItems[index];
         if (item is String) {
           final listName = item;
           final bookCount = groupedBooks[listName]?.length ?? 0;
