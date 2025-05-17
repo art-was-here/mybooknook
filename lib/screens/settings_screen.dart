@@ -41,12 +41,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
   );
   bool _isCheckingUpdate = false;
   bool _isTestingNotification = false;
+  final ScrollController _scrollController = ScrollController();
+  bool _isScrolled = false;
 
   @override
   void initState() {
     super.initState();
     _selectedAccentColor = widget.accentColor;
     _loadSettings();
+    _scrollController.addListener(_handleScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_handleScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _handleScroll() {
+    if (_scrollController.offset > 0 && !_isScrolled) {
+      setState(() {
+        _isScrolled = true;
+      });
+    } else if (_scrollController.offset <= 0 && _isScrolled) {
+      setState(() {
+        _isScrolled = false;
+      });
+    }
   }
 
   Future<void> _loadThemeMode() async {
@@ -209,12 +231,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
-        backgroundColor: _accentColor,
-        foregroundColor: Colors.white,
+        backgroundColor: _isScrolled ? _accentColor : Colors.transparent,
+        elevation: _isScrolled ? 4 : 0,
+        foregroundColor: _isScrolled
+            ? Colors.white
+            : Theme.of(context).colorScheme.onBackground,
       ),
       body: MediaQuery(
         data: MediaQuery.of(context).copyWith(textScaleFactor: 0.85),
         child: ListView(
+          controller: _scrollController,
           padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 16.0),
           children: [
             Card(
