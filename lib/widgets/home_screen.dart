@@ -1195,18 +1195,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   fabSize: ExpandableFabSize.regular,
                   shape: const CircleBorder(),
                   angle: 3.14 * 2,
+                  backgroundColor:
+                      Color.lerp(widget.accentColor, Colors.black, 0.03),
                 ),
                 closeButtonBuilder: RotateFloatingActionButtonBuilder(
                   child: const Icon(Icons.close),
                   fabSize: ExpandableFabSize.regular,
                   shape: const CircleBorder(),
                   angle: 3.14 * 2,
+                  backgroundColor:
+                      Color.lerp(widget.accentColor, Colors.black, 0.03),
                 ),
                 children: [
                   FloatingActionButton(
                     heroTag: 'fab_1',
                     mini: true,
                     child: const Icon(Icons.search),
+                    backgroundColor:
+                        Color.lerp(widget.accentColor, Colors.black, 0.03),
                     onPressed: () {
                       final state = _fabKey.currentState;
                       if (state != null) {
@@ -1220,6 +1226,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     heroTag: 'fab_2',
                     mini: true,
                     child: const Icon(Icons.text_snippet),
+                    backgroundColor:
+                        Color.lerp(widget.accentColor, Colors.black, 0.03),
                     onPressed: () async {
                       final state = _fabKey.currentState;
                       if (state != null) {
@@ -1233,6 +1241,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     heroTag: 'fab_3',
                     mini: true,
                     child: const Icon(Icons.link),
+                    backgroundColor:
+                        Color.lerp(widget.accentColor, Colors.black, 0.03),
                     onPressed: () async {
                       final state = _fabKey.currentState;
                       if (state != null) {

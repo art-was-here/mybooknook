@@ -39,7 +39,6 @@ class _ListItemState extends State<ListItem> {
           child: Card(
             elevation: 2,
             margin: EdgeInsets.zero,
-            color: widget.accentColor.withOpacity(0.1),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 0.0),
               child: Column(
