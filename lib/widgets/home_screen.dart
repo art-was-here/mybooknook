@@ -83,6 +83,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late final BookLoadingService _bookLoadingService;
   late final BookSortingService _bookSortingService;
 
+  // Navigation helper
+  Future<void> _navigateToRoute(String routeName) async {
+    print('Navigating to $routeName');
+
+    // Close the menu first
+    setState(() {
+      _isMenuOpen = false;
+      _currentDragX = 0.0;
+    });
+
+    print('Menu closed, waiting for animation to complete');
+    // Wait for the animation to complete
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    if (!mounted) {
+      print('Widget no longer mounted, navigation canceled');
+      return;
+    }
+
+    print('Navigation proceeding to $routeName with context: $_buildContext');
+    try {
+      // Use a direct navigation approach
+      Navigator.pushNamed(_buildContext, routeName);
+      print('Navigation command executed');
+    } catch (e) {
+      print('Navigation error: $e');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -329,8 +358,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     try {
       final List<Map<String, dynamic>> maps = await _database!.query(
         'books',
-        where: listId == 'Home' ? null : 'listId = ?',
-        whereArgs: listId == 'Home' ? null : [listId],
+        where: listId == 'Library' ? null : 'listId = ?',
+        whereArgs: listId == 'Library' ? null : [listId],
       );
 
       return maps.map((map) {
@@ -511,36 +540,37 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      print('Checking for Home list');
+      print('Checking for Library list');
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .collection('lists')
-          .where('name', isEqualTo: 'Home')
+          .where('name', isEqualTo: 'Library')
           .limit(1)
           .get();
 
       if (snapshot.docs.isEmpty) {
-        print('Creating new Home list');
+        print('Creating new Library list');
         final listRef = await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
             .collection('lists')
-            .add({'name': 'Home', 'createdAt': FieldValue.serverTimestamp()});
-        print('Created Home list with ID: ${listRef.id}');
+            .add(
+                {'name': 'Library', 'createdAt': FieldValue.serverTimestamp()});
+        print('Created Library list with ID: ${listRef.id}');
         if (mounted) {
           setState(() {
             _selectedListId = listRef.id;
-            _selectedListName = 'Home';
+            _selectedListName = 'Library';
             _isLoading = false;
           });
         }
       } else {
-        print('Found existing Home list with ID: ${snapshot.docs.first.id}');
+        print('Found existing Library list with ID: ${snapshot.docs.first.id}');
         if (mounted) {
           setState(() {
             _selectedListId = snapshot.docs.first.id;
-            _selectedListName = 'Home';
+            _selectedListName = 'Library';
             _isLoading = false;
           });
         }
@@ -690,10 +720,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             // Remove books from the deleted list
             _loadedBooks.removeWhere((book) => book.listId == listId);
 
-            // If we're currently viewing the deleted list, switch to Home
+            // If we're currently viewing the deleted list, switch to Library
             if (_selectedListId == listId) {
               _selectedListId = null;
-              _selectedListName = 'Home';
+              _selectedListName = 'Library';
             }
           }
 
@@ -804,8 +834,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
           // Update the UI
           if (mounted) {
-            // If we're in Home view or the list we just added to, update the UI
-            if (_selectedListName == 'Home' ||
+            // If we're in Library view or the list we just added to, update the UI
+            if (_selectedListName == 'Library' ||
                 _selectedListId == selectedList['id']) {
               // Create a new BookWithList object for the added book
               final newBookWithList = BookWithList(
@@ -822,8 +852,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 // Add the new book
                 _loadedBooks.add(newBookWithList);
 
-                // If we're in Home view, we need to reload all books
-                if (_selectedListName == 'Home') {
+                // If we're in Library view, we need to reload all books
+                if (_selectedListName == 'Library') {
                   _loadBooks();
                 } else {
                   // For a specific list, just sort the current books
@@ -911,20 +941,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: Scaffold(
             body: Stack(
               children: [
-                // Main Content (now stays fixed)
+                // Main Content
                 Positioned.fill(
                   child: GestureDetector(
-                    // Add gesture detection to open menu with swipe/flick
                     onHorizontalDragStart: (details) {
                       _dragStartX = details.globalPosition.dx;
                     },
                     onHorizontalDragUpdate: (details) {
-                      // Only allow opening from left edge
                       if (_dragStartX < 20 && !_isMenuOpen) {
                         setState(() {
                           final delta = details.globalPosition.dx - _dragStartX;
                           if (delta > 0) {
-                            // Only track right swipes
                             _currentDragX = delta.clamp(0.0, _menuWidth);
                           }
                         });
@@ -932,10 +959,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     },
                     onHorizontalDragEnd: (details) {
                       final velocity = details.primaryVelocity ?? 0;
-
-                      // Only update menu state, don't trigger full rebuild
                       setState(() {
-                        // Fast swipe right or dragged enough
                         if (velocity > 300 || _currentDragX > _menuWidth / 3) {
                           _isMenuOpen = true;
                         } else {
@@ -1040,20 +1064,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 onSelected: (String value) {
                                   switch (value) {
                                     case 'profile':
-                                      Navigator.pushNamed(context, '/profile');
+                                      _navigateToRoute('/profile');
                                       break;
                                     case 'search':
-                                      Navigator.pushNamed(context, '/search');
+                                      _navigateToRoute('/search');
                                       break;
                                     case 'notifications':
-                                      Navigator.pushNamed(
-                                          context, '/notifications');
+                                      _navigateToRoute('/notifications');
                                       break;
                                     case 'messages':
-                                      Navigator.pushNamed(context, '/messages');
+                                      _navigateToRoute('/messages');
                                       break;
                                     case 'settings':
-                                      Navigator.pushNamed(context, '/settings');
+                                      _navigateToRoute('/settings');
                                       break;
                                     case 'logout':
                                       _showLogoutDialog();
@@ -1209,64 +1232,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                               },
                                               child: const Text('Retry'),
                                             ),
-                                            const SizedBox(height: 8),
-                                            TextButton(
-                                              onPressed: () async {
-                                                if (mounted) {
-                                                  print(
-                                                      'Signing out due to error');
-                                                  await FirebaseAuth.instance
-                                                      .signOut();
-                                                  await FirebaseAuth.instance
-                                                      .setPersistence(
-                                                          Persistence.NONE);
-                                                  print(
-                                                      'Signed out and cleared persistence');
-                                                }
-                                              },
-                                              child: const Text('Sign Out'),
-                                            ),
                                           ],
                                         ),
                                       )
                                     : _selectedListId == null
-                                        ? Center(
-                                            child: Column(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                const Text(
-                                                    'Failed to load list. Please try again.'),
-                                                const SizedBox(height: 16),
-                                                ElevatedButton(
-                                                  onPressed: () {
-                                                    if (mounted) {
-                                                      _initializeDefaultList();
-                                                    }
-                                                  },
-                                                  child: const Text('Retry'),
-                                                ),
-                                                const SizedBox(height: 8),
-                                                TextButton(
-                                                  onPressed: () async {
-                                                    if (mounted) {
-                                                      print(
-                                                          'Signing out due to null list ID');
-                                                      await FirebaseAuth
-                                                          .instance
-                                                          .signOut();
-                                                      await FirebaseAuth
-                                                          .instance
-                                                          .setPersistence(
-                                                              Persistence.NONE);
-                                                      print(
-                                                          'Signed out and cleared persistence');
-                                                    }
-                                                  },
-                                                  child: const Text('Sign Out'),
-                                                ),
-                                              ],
-                                            ),
+                                        ? const Center(
+                                            child: Text(
+                                                'Failed to load list. Please try again.'),
                                           )
                                         : _cachedBookList!,
                           ),
@@ -1276,7 +1248,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ),
 
-                // Side Menu (now slides on top)
+                // Semi-transparent overlay
+                if (_isMenuOpen)
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: () {
+                        setState(() {
+                          _isMenuOpen = false;
+                          _currentDragX = 0.0;
+                        });
+                      },
+                      child: Container(
+                        color: Colors.black.withOpacity(0.3),
+                      ),
+                    ),
+                  ),
+
+                // Side Menu
                 AnimatedPositioned(
                   duration: const Duration(milliseconds: 250),
                   curve: Curves.easeOutQuad,
@@ -1284,282 +1273,239 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   top: 0,
                   bottom: 0,
                   width: _menuWidth,
-                  child: GestureDetector(
-                    // Add direct horizontal drag detection for the menu
-                    onHorizontalDragStart: (details) {
-                      print("Menu drag start: ${details.globalPosition.dx}");
-                      _dragStartX = details.globalPosition.dx;
-                    },
-                    onHorizontalDragUpdate: (details) {
-                      print(
-                          "Menu drag update: ${details.globalPosition.dx}, delta: ${details.globalPosition.dx - _dragStartX}");
-                      setState(() {
-                        final delta = details.globalPosition.dx - _dragStartX;
-                        // Only allow left swipes (negative delta) when menu is open
-                        if (delta < 0) {
-                          _currentDragX = _menuWidth + delta;
-                          if (_currentDragX < 0) _currentDragX = 0;
-                        }
-                      });
-                    },
-                    onHorizontalDragEnd: (details) {
-                      print(
-                          "Menu drag end, velocity: ${details.primaryVelocity}, current drag: $_currentDragX");
-                      final velocity = details.primaryVelocity ?? 0;
-
-                      setState(() {
-                        // Close if swiped left with enough velocity or distance
-                        if (velocity < -300 ||
-                            _currentDragX < _menuWidth * 0.5) {
-                          _isMenuOpen = false;
-                          _currentDragX = 0.0;
-                          print("Closing menu from swipe");
-                        } else {
-                          // Otherwise snap back to open
-                          _isMenuOpen = true;
-                          _currentDragX = _menuWidth;
-                          print("Keeping menu open");
-                        }
-                      });
-                    },
-                    child: Material(
-                      elevation: 16,
-                      color: Colors.transparent,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Color.lerp(
-                            Theme.of(context).scaffoldBackgroundColor,
-                            Colors.white,
-                            0.03,
-                          ),
-                          borderRadius: const BorderRadius.only(
-                            topRight: Radius.circular(17.6),
-                            bottomRight: Radius.circular(17.6),
-                          ),
+                  child: Material(
+                    elevation: 16,
+                    color: Colors.transparent,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Color.lerp(
+                          Theme.of(context).scaffoldBackgroundColor,
+                          Colors.white,
+                          0.03,
                         ),
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 60, horizontal: 8),
-                        child: Center(
-                          child: ListView(
-                            padding: EdgeInsets.zero,
-                            shrinkWrap: true,
-                            children: [
-                              // Profile Section
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16.0, vertical: 8.0),
-                                child: Row(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 24,
-                                      backgroundImage:
-                                          _cachedProfileImage != null
-                                              ? MemoryImage(base64Decode(
-                                                  _cachedProfileImage!))
-                                              : null,
-                                      child: _cachedProfileImage == null
-                                          ? const Icon(Icons.person)
-                                          : null,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: StreamBuilder<DocumentSnapshot>(
-                                        stream: FirebaseAuth
-                                                    .instance.currentUser !=
-                                                null
-                                            ? FirebaseFirestore.instance
-                                                .collection('users')
-                                                .doc(FirebaseAuth
-                                                    .instance.currentUser!.uid)
-                                                .snapshots()
-                                            : Stream.empty(),
-                                        builder: (context, snapshot) {
-                                          if (snapshot.hasData &&
-                                              snapshot.data != null) {
-                                            final data = snapshot.data!.data()
-                                                as Map<String, dynamic>?;
-                                            final username =
-                                                data?['username'] as String? ??
-                                                    'user';
-                                            return Text(
-                                              '@$username',
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .titleMedium
-                                                  ?.copyWith(
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                              overflow: TextOverflow.ellipsis,
-                                            );
-                                          }
-                                          return const Text('@user');
-                                        },
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 5.0),
-                                child: const Divider(),
-                              ),
-                              ListTile(
-                                leading: Icon(Icons.home,
-                                    color:
-                                        Theme.of(context).colorScheme.primary),
-                                title: const Text('Library'),
-                                onTap: () {
-                                  setState(() {
-                                    _selectedListId = null;
-                                    _selectedListName = 'Library';
-                                    _isMenuOpen = false;
-                                    _currentDragX = 0.0;
-                                    _clearBookListCache();
-                                  });
-                                  _initializeDefaultList();
-                                  _loadBooks();
-                                },
-                              ),
-                              ListTile(
-                                leading: Icon(Icons.person,
-                                    color:
-                                        Theme.of(context).colorScheme.primary),
-                                title: const Text('Profile'),
-                                onTap: () {
-                                  Navigator.pushNamed(context, '/profile');
-                                  setState(() {
-                                    _isMenuOpen = false;
-                                    _currentDragX = 0.0;
-                                  });
-                                },
-                              ),
-                              ListTile(
-                                leading: Icon(Icons.search,
-                                    color:
-                                        Theme.of(context).colorScheme.primary),
-                                title: const Text('Search'),
-                                onTap: () {
-                                  Navigator.pushNamed(context, '/search');
-                                  setState(() {
-                                    _isMenuOpen = false;
-                                    _currentDragX = 0.0;
-                                  });
-                                },
-                              ),
-                              ListTile(
-                                leading: Icon(Icons.notifications,
-                                    color:
-                                        Theme.of(context).colorScheme.primary),
-                                title: Row(
-                                  children: [
-                                    const Text('Notifications'),
-                                    if (_hasUnreadNotifications) ...[
-                                      const Spacer(),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary,
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                        child: Text(
-                                          _notificationCount > 100
-                                              ? '100+'
-                                              : '$_notificationCount',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                                onTap: () {
-                                  Navigator.pushNamed(
-                                      context, '/notifications');
-                                  setState(() {
-                                    _isMenuOpen = false;
-                                    _currentDragX = 0.0;
-                                  });
-                                },
-                              ),
-                              ListTile(
-                                leading: Icon(Icons.message,
-                                    color:
-                                        Theme.of(context).colorScheme.primary),
-                                title: const Text('Messages'),
-                                onTap: () {
-                                  Navigator.pushNamed(context, '/messages');
-                                  setState(() {
-                                    _isMenuOpen = false;
-                                    _currentDragX = 0.0;
-                                  });
-                                },
-                              ),
-                              ListTile(
-                                leading: Icon(Icons.settings,
-                                    color:
-                                        Theme.of(context).colorScheme.primary),
-                                title: const Text('Settings'),
-                                onTap: () {
-                                  Navigator.pushNamed(context, '/settings');
-                                  setState(() {
-                                    _isMenuOpen = false;
-                                    _currentDragX = 0.0;
-                                  });
-                                },
-                              ),
-                              Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 5.0),
-                                child: const Divider(),
-                              ),
-                              ListTile(
-                                leading: Icon(Icons.logout,
-                                    color:
-                                        Theme.of(context).colorScheme.primary),
-                                title: const Text('Logout'),
-                                onTap: () {
-                                  _showLogoutDialog();
-                                  setState(() {
-                                    _isMenuOpen = false;
-                                    _currentDragX = 0.0;
-                                  });
-                                },
-                              ),
-                            ],
-                          ),
+                        borderRadius: const BorderRadius.only(
+                          topRight: Radius.circular(17.6),
+                          bottomRight: Radius.circular(17.6),
                         ),
                       ),
-                    ),
-                  ),
-                ),
-
-                // Semi-transparent overlay that appears during drag
-                Positioned.fill(
-                  child: IgnorePointer(
-                    ignoring: !_isMenuOpen && _currentDragX == 0,
-                    child: AnimatedOpacity(
-                      opacity:
-                          _isMenuOpen ? 0.3 : _currentDragX / _menuWidth * 0.3,
-                      duration: const Duration(milliseconds: 250),
-                      child: GestureDetector(
-                        onTap: () {
-                          print("Overlay tapped");
-                          // Only update menu state, don't trigger full rebuild
-                          setState(() {
-                            _isMenuOpen = false;
-                            _currentDragX = 0.0;
-                          });
-                        },
-                        child: Container(
-                          color: Colors.black,
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 60, horizontal: 8),
+                      child: Center(
+                        child: ListView(
+                          padding: EdgeInsets.zero,
+                          shrinkWrap: true,
+                          children: [
+                            // Profile Section
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0, vertical: 8.0),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 24,
+                                    backgroundImage: _cachedProfileImage != null
+                                        ? MemoryImage(
+                                            base64Decode(_cachedProfileImage!))
+                                        : null,
+                                    child: _cachedProfileImage == null
+                                        ? const Icon(Icons.person)
+                                        : null,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: StreamBuilder<DocumentSnapshot>(
+                                      stream:
+                                          FirebaseAuth.instance.currentUser !=
+                                                  null
+                                              ? FirebaseFirestore.instance
+                                                  .collection('users')
+                                                  .doc(FirebaseAuth.instance
+                                                      .currentUser!.uid)
+                                                  .snapshots()
+                                              : Stream.empty(),
+                                      builder: (context, snapshot) {
+                                        if (snapshot.hasData &&
+                                            snapshot.data != null) {
+                                          final data = snapshot.data!.data()
+                                              as Map<String, dynamic>?;
+                                          final username =
+                                              data?['username'] as String? ??
+                                                  'user';
+                                          return Text(
+                                            '@$username',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                            overflow: TextOverflow.ellipsis,
+                                          );
+                                        }
+                                        return const Text('@user');
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 5.0),
+                              child: const Divider(),
+                            ),
+                            ListTile(
+                              leading: Icon(Icons.home,
+                                  color: Theme.of(context).colorScheme.primary),
+                              title: const Text('Library'),
+                              onTap: () {
+                                setState(() {
+                                  _selectedListId = null;
+                                  _selectedListName = 'Library';
+                                  _isMenuOpen = false;
+                                  _currentDragX = 0.0;
+                                  _clearBookListCache();
+                                });
+                                Future.delayed(
+                                    const Duration(milliseconds: 300), () {
+                                  if (mounted) {
+                                    _initializeDefaultList();
+                                    _loadBooks();
+                                  }
+                                });
+                              },
+                            ),
+                            ListTile(
+                              leading: Icon(Icons.person,
+                                  color: Theme.of(context).colorScheme.primary),
+                              title: const Text('Profile'),
+                              onTap: () {
+                                setState(() {
+                                  _isMenuOpen = false;
+                                  _currentDragX = 0.0;
+                                });
+                                Future.delayed(
+                                    const Duration(milliseconds: 300), () {
+                                  if (mounted) {
+                                    Navigator.pushNamed(context, '/profile');
+                                  }
+                                });
+                              },
+                            ),
+                            ListTile(
+                              leading: Icon(Icons.search,
+                                  color: Theme.of(context).colorScheme.primary),
+                              title: const Text('Search'),
+                              onTap: () {
+                                setState(() {
+                                  _isMenuOpen = false;
+                                  _currentDragX = 0.0;
+                                });
+                                Future.delayed(
+                                    const Duration(milliseconds: 300), () {
+                                  if (mounted) {
+                                    Navigator.pushNamed(context, '/search');
+                                  }
+                                });
+                              },
+                            ),
+                            ListTile(
+                              leading: Icon(Icons.notifications,
+                                  color: Theme.of(context).colorScheme.primary),
+                              title: Row(
+                                children: [
+                                  const Text('Notifications'),
+                                  if (_hasUnreadNotifications) ...[
+                                    const Spacer(),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        _notificationCount > 100
+                                            ? '100+'
+                                            : '$_notificationCount',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              onTap: () {
+                                setState(() {
+                                  _isMenuOpen = false;
+                                  _currentDragX = 0.0;
+                                });
+                                Future.delayed(
+                                    const Duration(milliseconds: 300), () {
+                                  if (mounted) {
+                                    Navigator.pushNamed(
+                                        context, '/notifications');
+                                  }
+                                });
+                              },
+                            ),
+                            ListTile(
+                              leading: Icon(Icons.message,
+                                  color: Theme.of(context).colorScheme.primary),
+                              title: const Text('Messages'),
+                              onTap: () {
+                                setState(() {
+                                  _isMenuOpen = false;
+                                  _currentDragX = 0.0;
+                                });
+                                Future.delayed(
+                                    const Duration(milliseconds: 300), () {
+                                  if (mounted) {
+                                    Navigator.pushNamed(context, '/messages');
+                                  }
+                                });
+                              },
+                            ),
+                            ListTile(
+                              leading: Icon(Icons.settings,
+                                  color: Theme.of(context).colorScheme.primary),
+                              title: const Text('Settings'),
+                              onTap: () {
+                                setState(() {
+                                  _isMenuOpen = false;
+                                  _currentDragX = 0.0;
+                                });
+                                Future.delayed(
+                                    const Duration(milliseconds: 300), () {
+                                  if (mounted) {
+                                    Navigator.pushNamed(context, '/settings');
+                                  }
+                                });
+                              },
+                            ),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 5.0),
+                              child: const Divider(),
+                            ),
+                            ListTile(
+                              leading: Icon(Icons.logout,
+                                  color: Theme.of(context).colorScheme.primary),
+                              title: const Text('Logout'),
+                              onTap: () {
+                                setState(() {
+                                  _isMenuOpen = false;
+                                  _currentDragX = 0.0;
+                                });
+                                _showLogoutDialog();
+                              },
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -1685,10 +1631,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // Add composite indexes for Firestore queries
   Future<void> _ensureIndexes() async {
     try {
-      // Index for Home view books query
+      // Index for Library view books query
       await FirebaseFirestore.instance.collection('users').doc('_indexes').set({
         'indexes': {
-          'books_home': {
+          'books_library': {
             'fields': [
               {'fieldPath': 'userId', 'order': 'ASCENDING'},
               {'fieldPath': 'createdAt', 'order': 'DESCENDING'},
@@ -1721,14 +1667,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     try {
       // First, ensure we have the list names cache populated
-      if (_selectedListName == 'Home') {
+      if (_selectedListName == 'Library') {
         await _fetchListNames(user.uid);
       }
 
       Query query;
-      if (_selectedListName == 'Home') {
-        print('Executing Firestore query for Home');
-        // For Home view, get all books from all lists
+      if (_selectedListName == 'Library') {
+        print('Executing Firestore query for Library');
+        // For Library view, get all books from all lists
         query = FirebaseFirestore.instance
             .collectionGroup('books')
             .where('userId', isEqualTo: user.uid)
@@ -1781,8 +1727,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         String listName = 'Unknown List';
         String listId = '';
 
-        if (_selectedListName == 'Home') {
-          // For Home view, get the list name from the path
+        if (_selectedListName == 'Library') {
+          // For Library view, get the list name from the path
           final path = doc.reference.path;
           final parts = path.split('/');
           if (parts.length >= 4) {
@@ -1866,7 +1812,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   .collection('users')
                   .doc(FirebaseAuth.instance.currentUser!.uid)
                   .collection('lists')
-                  .where('name', isNotEqualTo: 'Home')
+                  .where('name', isNotEqualTo: 'Library')
                   .orderBy('name')
                   .orderBy('createdAt')
                   .snapshots()
@@ -2182,7 +2128,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (user == null) return const SizedBox.shrink();
 
     return StreamBuilder<QuerySnapshot>(
-      stream: _selectedListName == 'Home'
+      stream: _selectedListName == 'Library'
           ? FirebaseFirestore.instance
               .collectionGroup('books')
               .where('userId', isEqualTo: user.uid)
@@ -2230,7 +2176,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           String listName = 'Unknown List';
           String listId = '';
 
-          if (_selectedListName == 'Home') {
+          if (_selectedListName == 'Library') {
             final path = doc.reference.path;
             final parts = path.split('/');
             if (parts.length >= 4) {
