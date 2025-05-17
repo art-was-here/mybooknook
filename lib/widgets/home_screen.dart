@@ -83,6 +83,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late final BookLoadingService _bookLoadingService;
   late final BookSortingService _bookSortingService;
 
+  // Custom FAB location
+  static const _kFloatingActionButtonLocation =
+      _CustomFloatingActionButtonLocation();
+
   // Navigation helper
   Future<void> _navigateToRoute(String routeName) async {
     print('Navigating to $routeName');
@@ -892,79 +896,226 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         }
 
         return WillPopScope(
-          onWillPop: () async {
-            if (_isMenuOpen) {
-              setState(() {
-                _isMenuOpen = false;
-                _currentDragX = 0.0;
-              });
-              return false;
-            }
-            final now = DateTime.now();
-            if (_lastBackPressTime == null ||
-                now.difference(_lastBackPressTime!) >
-                    const Duration(seconds: 2)) {
-              _lastBackPressTime = now;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Press back again to exit'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-              return false;
-            }
-            return true;
-          },
+          onWillPop: _onWillPop,
           child: Scaffold(
             body: Stack(
               children: [
                 // Main Content
                 Positioned.fill(
-                  child: GestureDetector(
-                    onHorizontalDragStart: (details) {
-                      _dragStartX = details.globalPosition.dx;
-                    },
-                    onHorizontalDragUpdate: (details) {
-                      if (_dragStartX < 20 && !_isMenuOpen) {
-                        setState(() {
-                          final delta = details.globalPosition.dx - _dragStartX;
-                          if (delta > 0) {
-                            _currentDragX = delta.clamp(0.0, _menuWidth);
-                          }
-                        });
-                      }
-                    },
-                    onHorizontalDragEnd: (details) {
-                      final velocity = details.primaryVelocity ?? 0;
-                      setState(() {
-                        if (velocity > 300 || _currentDragX > _menuWidth / 3) {
-                          _isMenuOpen = true;
-                        } else {
-                          _isMenuOpen = false;
-                        }
-                        _currentDragX = _isMenuOpen ? _menuWidth : 0.0;
-                      });
-                    },
-                    child: Material(
-                      color: Theme.of(context).scaffoldBackgroundColor,
-                      child: Column(
-                        children: [
-                          AppBar(
-                            title: PopupMenuButton<String>(
-                              onSelected: (value) async {
-                                if (value == 'add_list' && mounted) {
-                                  print('Add new list selected');
-                                  await _addNewList(context);
+                  child: Material(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    child: Column(
+                      children: [
+                        AppBar(
+                          title: PopupMenuButton<String>(
+                            onSelected: (value) async {
+                              if (value == 'add_list' && mounted) {
+                                print('Add new list selected');
+                                await _addNewList(context);
+                              }
+                            },
+                            itemBuilder: (BuildContext popupContext) => [
+                              PopupMenuItem<String>(
+                                value: 'add_list',
+                                child: Row(
+                                  children: const [
+                                    Icon(Icons.add),
+                                    SizedBox(width: 8),
+                                    Text('Add New List'),
+                                  ],
+                                ),
+                              ),
+                              PopupMenuItem<String>(
+                                enabled: false,
+                                height: 0,
+                                padding: EdgeInsets.zero,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10),
+                                  child: Divider(height: 1),
+                                ),
+                              ),
+                              ..._buildListMenuItems(context),
+                            ],
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(_selectedListName),
+                                const Icon(Icons.arrow_drop_down, size: 20),
+                              ],
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            offset: const Offset(0, 40),
+                            constraints: BoxConstraints(
+                              minWidth: MediaQuery.of(context).size.width,
+                              maxWidth: MediaQuery.of(context).size.width,
+                            ),
+                          ),
+                          actions: [
+                            PopupMenuButton<String>(
+                              icon: _isProfileImageLoading
+                                  ? const CircleAvatar(
+                                      radius: 18,
+                                      child: CircularProgressIndicator(),
+                                    )
+                                  : Stack(
+                                      children: [
+                                        CircleAvatar(
+                                          radius: 18,
+                                          backgroundImage:
+                                              _cachedProfileImage != null
+                                                  ? MemoryImage(base64Decode(
+                                                      _cachedProfileImage!))
+                                                  : null,
+                                          child: _cachedProfileImage == null
+                                              ? const Icon(Icons.person)
+                                              : null,
+                                        ),
+                                        if (_hasUnreadNotifications)
+                                          Positioned(
+                                            right: 0,
+                                            bottom: 0,
+                                            child: Container(
+                                              width: 12,
+                                              height: 12,
+                                              decoration: BoxDecoration(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .error,
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: Theme.of(context)
+                                                      .scaffoldBackgroundColor,
+                                                  width: 2,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                              onSelected: (String value) {
+                                switch (value) {
+                                  case 'profile':
+                                    _navigateToRoute('/profile');
+                                    break;
+                                  case 'search':
+                                    _navigateToRoute('/search');
+                                    break;
+                                  case 'notifications':
+                                    _navigateToRoute('/notifications');
+                                    break;
+                                  case 'messages':
+                                    _navigateToRoute('/messages');
+                                    break;
+                                  case 'settings':
+                                    _navigateToRoute('/settings');
+                                    break;
+                                  case 'logout':
+                                    _showLogoutDialog();
+                                    break;
                                 }
                               },
-                              itemBuilder: (BuildContext popupContext) => [
-                                PopupMenuItem<String>(
-                                  value: 'add_list',
+                              constraints: BoxConstraints(
+                                minWidth: MediaQuery.of(context).size.width,
+                                maxWidth: MediaQuery.of(context).size.width,
+                              ),
+                              position: PopupMenuPosition.under,
+                              offset: const Offset(0, 10),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              itemBuilder: (BuildContext context) =>
+                                  <PopupMenuEntry<String>>[
+                                PopupMenuItem(
+                                  value: 'profile',
                                   child: Row(
-                                    children: const [
-                                      Icon(Icons.add),
-                                      SizedBox(width: 8),
-                                      Text('Add New List'),
+                                    children: [
+                                      Icon(Icons.person,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary),
+                                      const SizedBox(width: 8),
+                                      const Text('Go to Profile'),
+                                    ],
+                                  ),
+                                ),
+                                PopupMenuItem(
+                                  value: 'search',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.search,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary),
+                                      const SizedBox(width: 8),
+                                      const Text('Search'),
+                                    ],
+                                  ),
+                                ),
+                                PopupMenuItem(
+                                  value: 'notifications',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.notifications,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary),
+                                      const SizedBox(width: 8),
+                                      const Text('Notifications'),
+                                      if (_hasUnreadNotifications) ...[
+                                        const Spacer(),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary,
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            _notificationCount > 100
+                                                ? '100+'
+                                                : '$_notificationCount',
+                                            style: TextStyle(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onPrimary,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                PopupMenuItem(
+                                  value: 'messages',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.message,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary),
+                                      const SizedBox(width: 8),
+                                      const Text('Messages'),
+                                    ],
+                                  ),
+                                ),
+                                PopupMenuItem(
+                                  value: 'settings',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.settings,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary),
+                                      const SizedBox(width: 8),
+                                      const Text('Settings'),
                                     ],
                                   ),
                                 ),
@@ -978,614 +1129,106 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                     child: Divider(height: 1),
                                   ),
                                 ),
-                                ..._buildListMenuItems(context),
+                                PopupMenuItem<String>(
+                                  value: 'logout',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.logout,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary),
+                                      const SizedBox(width: 8),
+                                      const Text('Logout'),
+                                    ],
+                                  ),
+                                ),
                               ],
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(_selectedListName),
-                                  const Icon(Icons.arrow_drop_down, size: 20),
-                                ],
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              offset: const Offset(0, 40),
-                              constraints: BoxConstraints(
-                                minWidth: MediaQuery.of(context).size.width,
-                                maxWidth: MediaQuery.of(context).size.width,
-                              ),
-                            ),
-                            actions: [
-                              PopupMenuButton<String>(
-                                icon: _isProfileImageLoading
-                                    ? const CircleAvatar(
-                                        radius: 18,
-                                        child: CircularProgressIndicator(),
-                                      )
-                                    : Stack(
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 18,
-                                            backgroundImage:
-                                                _cachedProfileImage != null
-                                                    ? MemoryImage(base64Decode(
-                                                        _cachedProfileImage!))
-                                                    : null,
-                                            child: _cachedProfileImage == null
-                                                ? const Icon(Icons.person)
-                                                : null,
-                                          ),
-                                          if (_hasUnreadNotifications)
-                                            Positioned(
-                                              right: 0,
-                                              bottom: 0,
-                                              child: Container(
-                                                width: 12,
-                                                height: 12,
-                                                decoration: BoxDecoration(
-                                                  color: Theme.of(context)
-                                                      .colorScheme
-                                                      .error,
-                                                  shape: BoxShape.circle,
-                                                  border: Border.all(
-                                                    color: Theme.of(context)
-                                                        .scaffoldBackgroundColor,
-                                                    width: 2,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                onSelected: (String value) {
-                                  switch (value) {
-                                    case 'profile':
-                                      _navigateToRoute('/profile');
-                                      break;
-                                    case 'search':
-                                      _navigateToRoute('/search');
-                                      break;
-                                    case 'notifications':
-                                      _navigateToRoute('/notifications');
-                                      break;
-                                    case 'messages':
-                                      _navigateToRoute('/messages');
-                                      break;
-                                    case 'settings':
-                                      _navigateToRoute('/settings');
-                                      break;
-                                    case 'logout':
-                                      _showLogoutDialog();
-                                      break;
-                                  }
-                                },
-                                constraints: BoxConstraints(
-                                  minWidth: MediaQuery.of(context).size.width,
-                                  maxWidth: MediaQuery.of(context).size.width,
-                                ),
-                                position: PopupMenuPosition.under,
-                                offset: const Offset(0, 10),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                itemBuilder: (BuildContext context) =>
-                                    <PopupMenuEntry<String>>[
-                                  PopupMenuItem(
-                                    value: 'profile',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.person,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary),
-                                        const SizedBox(width: 8),
-                                        const Text('Go to Profile'),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'search',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.search,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary),
-                                        const SizedBox(width: 8),
-                                        const Text('Search'),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'notifications',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.notifications,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary),
-                                        const SizedBox(width: 8),
-                                        const Text('Notifications'),
-                                        if (_hasUnreadNotifications) ...[
-                                          const Spacer(),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 8, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .primary,
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
-                                            child: Text(
-                                              _notificationCount > 100
-                                                  ? '100+'
-                                                  : '$_notificationCount',
-                                              style: TextStyle(
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .onPrimary,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'messages',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.message,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary),
-                                        const SizedBox(width: 8),
-                                        const Text('Messages'),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'settings',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.settings,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary),
-                                        const SizedBox(width: 8),
-                                        const Text('Settings'),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem<String>(
-                                    enabled: false,
-                                    height: 0,
-                                    padding: EdgeInsets.zero,
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 10),
-                                      child: Divider(height: 1),
-                                    ),
-                                  ),
-                                  PopupMenuItem<String>(
-                                    value: 'logout',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.logout,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary),
-                                        const SizedBox(width: 8),
-                                        const Text('Logout'),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          Expanded(
-                            child: _isLoading
-                                ? const Center(
-                                    child: CircularProgressIndicator())
-                                : _errorMessage != null
-                                    ? Center(
-                                        child: Column(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Text(_errorMessage!),
-                                            const SizedBox(height: 16),
-                                            ElevatedButton(
-                                              onPressed: () {
-                                                if (mounted) {
-                                                  _initializeDefaultList();
-                                                }
-                                              },
-                                              child: const Text('Retry'),
-                                            ),
-                                          ],
-                                        ),
-                                      )
-                                    : _selectedListName == 'Library' &&
-                                            _loadedBooks.isEmpty &&
-                                            _cachedBookList == null
-                                        ? _buildBookList()
-                                        : _cachedBookList ?? _buildBookList(),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Semi-transparent overlay
-                if (_isMenuOpen)
-                  Positioned.fill(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onTap: () {
-                        setState(() {
-                          _isMenuOpen = false;
-                          _currentDragX = 0.0;
-                        });
-                      },
-                      child: Container(
-                        color: Colors.black.withOpacity(0.3),
-                      ),
-                    ),
-                  ),
-
-                // Side Menu
-                AnimatedPositioned(
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOutQuad,
-                  left: _isMenuOpen ? 0 : -_menuWidth + _currentDragX,
-                  top: 0,
-                  bottom: 0,
-                  width: _menuWidth,
-                  child: Material(
-                    elevation: 16,
-                    color: Colors.transparent,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Color.lerp(
-                          Theme.of(context).scaffoldBackgroundColor,
-                          Colors.white,
-                          0.03,
-                        ),
-                        borderRadius: const BorderRadius.only(
-                          topRight: Radius.circular(17.6),
-                          bottomRight: Radius.circular(17.6),
-                        ),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 60, horizontal: 8),
-                      child: Center(
-                        child: ListView(
-                          padding: EdgeInsets.zero,
-                          shrinkWrap: true,
-                          children: [
-                            // Profile Section
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16.0, vertical: 8.0),
-                              child: Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 24,
-                                    backgroundImage: _cachedProfileImage != null
-                                        ? MemoryImage(
-                                            base64Decode(_cachedProfileImage!))
-                                        : null,
-                                    child: _cachedProfileImage == null
-                                        ? const Icon(Icons.person)
-                                        : null,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: StreamBuilder<DocumentSnapshot>(
-                                      stream:
-                                          FirebaseAuth.instance.currentUser !=
-                                                  null
-                                              ? FirebaseFirestore.instance
-                                                  .collection('users')
-                                                  .doc(FirebaseAuth.instance
-                                                      .currentUser!.uid)
-                                                  .snapshots()
-                                              : Stream.empty(),
-                                      builder: (context, snapshot) {
-                                        if (snapshot.hasData &&
-                                            snapshot.data != null) {
-                                          final data = snapshot.data!.data()
-                                              as Map<String, dynamic>?;
-                                          final username =
-                                              data?['username'] as String? ??
-                                                  'user';
-                                          return Text(
-                                            '@$username',
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .titleMedium
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                            overflow: TextOverflow.ellipsis,
-                                          );
-                                        }
-                                        return const Text('@user');
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 5.0),
-                              child: const Divider(),
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.home,
-                                  color: Theme.of(context).colorScheme.primary),
-                              title: const Text('Library'),
-                              onTap: () async {
-                                // If we're already on the Library page, just close the menu
-                                if (_selectedListName == 'Library') {
-                                  setState(() {
-                                    _isMenuOpen = false;
-                                    _currentDragX = 0.0;
-                                  });
-                                  return;
-                                }
-
-                                // First get the ID of the Library list to avoid the "Failed to load list" message
-                                try {
-                                  final user =
-                                      FirebaseAuth.instance.currentUser;
-                                  if (user != null) {
-                                    final snapshot = await FirebaseFirestore
-                                        .instance
-                                        .collection('users')
-                                        .doc(user.uid)
-                                        .collection('lists')
-                                        .where('name', isEqualTo: 'Library')
-                                        .limit(1)
-                                        .get();
-
-                                    if (snapshot.docs.isNotEmpty) {
-                                      final libraryListId =
-                                          snapshot.docs.first.id;
-                                      // Update state with the Library list ID first
-                                      setState(() {
-                                        _selectedListId = libraryListId;
-                                        _selectedListName = 'Library';
-                                        _isMenuOpen = false;
-                                        _currentDragX = 0.0;
-                                        _errorMessage = null;
-                                      });
-                                    }
-                                  }
-                                } catch (e) {
-                                  print('Error finding Library list: $e');
-                                }
-
-                                // Wait for menu animation to complete
-                                await Future.delayed(
-                                    const Duration(milliseconds: 300));
-
-                                if (mounted) {
-                                  try {
-                                    await _loadBooks();
-                                  } catch (e) {
-                                    print('Error loading Library: $e');
-                                  }
-                                }
-                              },
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.person,
-                                  color: Theme.of(context).colorScheme.primary),
-                              title: const Text('Profile'),
-                              onTap: () {
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                                Future.delayed(
-                                    const Duration(milliseconds: 300), () {
-                                  if (mounted) {
-                                    Navigator.pushNamed(context, '/profile');
-                                  }
-                                });
-                              },
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.search,
-                                  color: Theme.of(context).colorScheme.primary),
-                              title: const Text('Search'),
-                              onTap: () {
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                                Future.delayed(
-                                    const Duration(milliseconds: 300), () {
-                                  if (mounted) {
-                                    Navigator.pushNamed(context, '/search');
-                                  }
-                                });
-                              },
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.notifications,
-                                  color: Theme.of(context).colorScheme.primary),
-                              title: Row(
-                                children: [
-                                  const Text('Notifications'),
-                                  if (_hasUnreadNotifications) ...[
-                                    const Spacer(),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        _notificationCount > 100
-                                            ? '100+'
-                                            : '$_notificationCount',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              onTap: () {
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                                Future.delayed(
-                                    const Duration(milliseconds: 300), () {
-                                  if (mounted) {
-                                    Navigator.pushNamed(
-                                        context, '/notifications');
-                                  }
-                                });
-                              },
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.message,
-                                  color: Theme.of(context).colorScheme.primary),
-                              title: const Text('Messages'),
-                              onTap: () {
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                                Future.delayed(
-                                    const Duration(milliseconds: 300), () {
-                                  if (mounted) {
-                                    Navigator.pushNamed(context, '/messages');
-                                  }
-                                });
-                              },
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.settings,
-                                  color: Theme.of(context).colorScheme.primary),
-                              title: const Text('Settings'),
-                              onTap: () {
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                                Future.delayed(
-                                    const Duration(milliseconds: 300), () {
-                                  if (mounted) {
-                                    Navigator.pushNamed(context, '/settings');
-                                  }
-                                });
-                              },
-                            ),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 5.0),
-                              child: const Divider(),
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.logout,
-                                  color: Theme.of(context).colorScheme.primary),
-                              title: const Text('Logout'),
-                              onTap: () {
-                                setState(() {
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                });
-                                _showLogoutDialog();
-                              },
                             ),
                           ],
                         ),
-                      ),
+                        Expanded(
+                          child: _isLoading
+                              ? const Center(child: CircularProgressIndicator())
+                              : _errorMessage != null
+                                  ? Center(
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Text(_errorMessage!),
+                                          const SizedBox(height: 16),
+                                          ElevatedButton(
+                                            onPressed: () {
+                                              if (mounted) {
+                                                _initializeDefaultList();
+                                              }
+                                            },
+                                            child: const Text('Retry'),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : _selectedListName == 'Library' &&
+                                          _loadedBooks.isEmpty &&
+                                          _cachedBookList == null
+                                      ? _buildBookList()
+                                      : _cachedBookList ?? _buildBookList(),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ],
             ),
-            floatingActionButtonLocation: ExpandableFab.location,
-            floatingActionButton: ExpandableFab(
-              key: _fabKey,
-              type: ExpandableFabType.up,
-              distance: 70.0,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0),
-                  child: FloatingActionButton.small(
-                    heroTag: 'search_fab',
-                    backgroundColor:
-                        Theme.of(context).colorScheme.primary.withOpacity(0.8),
-                    foregroundColor: Colors.white,
+            floatingActionButtonLocation:
+                FloatingActionButtonLocation.endDocked,
+            floatingActionButton: Container(
+              margin: const EdgeInsets.only(bottom: 0.0),
+              child: ExpandableFab(
+                key: _fabKey,
+                distance: 112.0,
+                type: ExpandableFabType.fan,
+                fanAngle: 90,
+                openButtonBuilder: RotateFloatingActionButtonBuilder(
+                  child: const Icon(Icons.add),
+                  fabSize: ExpandableFabSize.regular,
+                  shape: const CircleBorder(),
+                  angle: 3.14 * 2,
+                ),
+                closeButtonBuilder: RotateFloatingActionButtonBuilder(
+                  child: const Icon(Icons.close),
+                  fabSize: ExpandableFabSize.regular,
+                  shape: const CircleBorder(),
+                  angle: 3.14 * 2,
+                ),
+                children: [
+                  FloatingActionButton(
+                    heroTag: 'fab_1',
+                    mini: true,
+                    child: const Icon(Icons.search),
                     onPressed: () {
-                      print('Search FAB pressed');
                       final state = _fabKey.currentState;
-                      if (state != null && state.isOpen) {
-                        print('Toggling FAB closed');
+                      if (state != null) {
                         state.toggle();
                       }
-                      BookSearchSheet.show(
-                        context,
-                        _selectedListId,
-                        _selectedListName,
-                        _bookService!,
-                      );
+                      print('Showing search sheet');
+                      _showBookSearchSheet();
                     },
-                    child: const Icon(Icons.search),
-                    tooltip: 'Search by Title or ISBN',
                   ),
-                ),
-                FloatingActionButton.small(
-                  heroTag: 'scan_fab',
-                  backgroundColor:
-                      Theme.of(context).colorScheme.primary.withOpacity(0.8),
-                  foregroundColor: Colors.white,
-                  onPressed: () {
-                    print('Scan FAB pressed');
-                    final state = _fabKey.currentState;
-                    if (state != null && state.isOpen) {
-                      print('Toggling FAB closed');
-                      state.toggle();
-                    }
-                    scanBarcode();
-                  },
-                  child: const Icon(Icons.camera_alt),
-                  tooltip: 'Scan ISBN',
-                ),
-              ],
-              openButtonBuilder: RotateFloatingActionButtonBuilder(
-                child: const Icon(Icons.add),
-                foregroundColor: Colors.white,
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                shape: const CircleBorder(),
-              ),
-              closeButtonBuilder: DefaultFloatingActionButtonBuilder(
-                child: const Icon(Icons.close),
-                foregroundColor: Colors.white,
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                shape: const CircleBorder(),
+                  FloatingActionButton(
+                    heroTag: 'fab_2',
+                    mini: true,
+                    child: const Icon(Icons.text_snippet),
+                    onPressed: () async {
+                      final state = _fabKey.currentState;
+                      if (state != null) {
+                        state.toggle();
+                      }
+                      print('Starting text scan');
+                      await scanTextFromImage();
+                    },
+                  ),
+                ],
               ),
             ),
           ),
@@ -1877,57 +1520,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _errorMessage = null;
       });
 
-      final isbn = await TextRecognitionService.scanISBN();
+      final isbn = await BarcodeService.scanBarcode();
 
       if (isbn == null) {
         if (!mounted) return;
         setState(() {
-          _errorMessage = 'No ISBN found in the image. Please try again.';
+          _errorMessage = 'No barcode found. Please try again.';
           _isLoading = false;
         });
         return;
       }
 
-      // Check cache first
-      final cachedBook = await _getCachedBook(isbn);
-      if (cachedBook != null) {
-        if (!mounted) return;
-        setState(() {
-          _isLoading = false;
-        });
-        _showBookDetails(cachedBook, isScanned: true);
-        return;
-      }
-
-      // Fetch book details from Google Books API
-      final book = await _bookService!.fetchBookDetails(isbn);
-      if (book == null) {
-        if (!mounted) return;
-        setState(() {
-          _errorMessage = 'Book not found. Please try again.';
-          _isLoading = false;
-        });
-        return;
-      }
-
-      // Cache the book
-      await _cacheBook(book, _selectedListId ?? '', _selectedListName);
-
-      // Show book details
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
-      _showBookDetails(book, isScanned: true);
+      // Process the scanned ISBN
+      _processScannedISBN(isbn);
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = 'Error scanning book: $e';
+        _errorMessage = 'Error scanning barcode: $e';
         _isLoading = false;
       });
       ScaffoldMessenger.of(
         _buildContext,
-      ).showSnackBar(SnackBar(content: Text('Error scanning book: $e')));
+      ).showSnackBar(SnackBar(content: Text('Error scanning barcode: $e')));
     }
   }
 
@@ -2063,6 +1677,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<bool> _onWillPop() async {
+    // First check if the FAB is expanded, if so, collapse it
+    final fabState = _fabKey.currentState;
+    if (fabState != null && fabState.isOpen) {
+      fabState.toggle();
+      return false;
+    }
+
+    // Otherwise handle back press as normal
     final now = DateTime.now();
     if (_lastBackPressTime == null ||
         now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
@@ -2258,6 +1880,115 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         }
         return const SizedBox.shrink();
       },
+    );
+  }
+
+  void _showBookSearchSheet() {
+    if (_bookService != null) {
+      BookSearchSheet.show(
+        _buildContext,
+        _selectedListId,
+        _selectedListName,
+        _bookService!,
+      );
+    }
+  }
+
+  Future<void> scanTextFromImage() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+
+      final isbn = await TextRecognitionService.scanISBN();
+      if (isbn == null) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(_buildContext).showSnackBar(
+          const SnackBar(content: Text('No ISBN found. Please try again.')),
+        );
+        return;
+      }
+
+      // Process the scanned ISBN
+      _processScannedISBN(isbn);
+    } catch (e) {
+      print('Error scanning text: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Error scanning text: $e';
+        });
+        ScaffoldMessenger.of(_buildContext).showSnackBar(
+          SnackBar(content: Text('Error scanning text: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _processScannedISBN(String isbn) async {
+    try {
+      // Check cache first
+      final cachedBook = await _getCachedBook(isbn);
+      if (cachedBook != null) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+        });
+        _showBookDetails(cachedBook, isScanned: true);
+        return;
+      }
+
+      // Fetch book details from Google Books API
+      final book = await _bookService!.fetchBookDetails(isbn);
+      if (book == null) {
+        if (!mounted) return;
+        setState(() {
+          _errorMessage = 'Book not found. Please try again.';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Cache the book
+      await _cacheBook(book, _selectedListId ?? '', _selectedListName);
+
+      // Show book details
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+      _showBookDetails(book, isScanned: true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'Error processing ISBN: $e';
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(_buildContext)
+          .showSnackBar(SnackBar(content: Text('Error processing ISBN: $e')));
+    }
+  }
+}
+
+class _CustomFloatingActionButtonLocation extends FloatingActionButtonLocation {
+  const _CustomFloatingActionButtonLocation();
+
+  @override
+  Offset getOffset(ScaffoldPrelayoutGeometry scaffoldGeometry) {
+    final double contentBottom = scaffoldGeometry.contentBottom;
+    final double bottomContentHeight =
+        scaffoldGeometry.scaffoldSize.height - contentBottom;
+    final double bottomViewPadding = scaffoldGeometry.minViewPadding.bottom;
+    final double fabY = contentBottom - 20.0 - bottomViewPadding;
+    return Offset(
+      scaffoldGeometry.scaffoldSize.width -
+          16.0 -
+          scaffoldGeometry.minInsets.right,
+      fabY,
     );
   }
 }

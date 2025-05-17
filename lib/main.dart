@@ -20,6 +20,7 @@ import 'screens/messages_screen.dart';
 import 'screens/chat_room_screen.dart';
 import 'services/notification_service.dart';
 import 'services/update_service.dart';
+import 'widgets/side_menu.dart';
 
 // Handle background messages
 @pragma('vm:entry-point')
@@ -351,6 +352,13 @@ class _MyAppState extends State<MyApp> {
         useMaterial3: true,
       ),
       themeMode: _themeMode,
+      builder: (context, child) {
+        // Wrap the app with our side menu
+        return SideMenu(
+          navigatorKey: _navigatorKey,
+          child: child!,
+        );
+      },
       initialRoute: '/',
       routes: {
         '/': (context) => StreamBuilder<User?>(
