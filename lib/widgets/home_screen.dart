@@ -27,6 +27,7 @@ import 'home_screen/list_manager.dart';
 import 'home_screen/book_with_list.dart';
 import '../screens/settings_screen.dart';
 import '../screens/search_screen.dart';
+import 'package:http/http.dart' as http;
 
 class HomeScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
@@ -1228,6 +1229,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       await scanTextFromImage();
                     },
                   ),
+                  FloatingActionButton(
+                    heroTag: 'fab_3',
+                    mini: true,
+                    child: const Icon(Icons.link),
+                    onPressed: () async {
+                      final state = _fabKey.currentState;
+                      if (state != null) {
+                        state.toggle();
+                      }
+                      print('Opening link input dialog');
+                      await _showLinkInputDialog();
+                    },
+                  ),
                 ],
               ),
             ),
@@ -1914,7 +1928,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
 
       // Process the scanned ISBN
-      _processScannedISBN(isbn);
+      await _processScannedISBN(isbn);
     } catch (e) {
       print('Error scanning text: $e');
       if (mounted) {
@@ -1970,6 +1984,297 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       });
       ScaffoldMessenger.of(_buildContext)
           .showSnackBar(SnackBar(content: Text('Error processing ISBN: $e')));
+    }
+  }
+
+  Future<void> _showLinkInputDialog() async {
+    final TextEditingController controller = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    return showDialog(
+      context: _buildContext,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Paste Book Link'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: 'Paste Amazon, Google Books, AbeBooks, or eBay link',
+            ),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter a link';
+              }
+              return null;
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(dialogContext);
+                await _processBookLink(controller.text);
+              }
+            },
+            child: const Text('Process'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _processBookLink(String url) async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Extract ISBN or title from URL
+      String? isbn;
+      String? title;
+
+      // Amazon URL patterns
+      final amazonPatterns = [
+        RegExp(r'amazon\.[^/]+/.*?/(\d{9}[\dX])'), // Standard ISBN pattern
+        RegExp(r'amazon\.[^/]+/.*?/dp/([A-Z0-9]{10})'), // ASIN pattern
+        RegExp(
+            r'amazon\.[^/]+/.*?/product/([A-Z0-9]{10})'), // Product ID pattern
+        RegExp(r'amazon\.[^/]+/.*?/title/([^/]+)'), // Title pattern
+      ];
+
+      // Google Books URL patterns
+      final googlePatterns = [
+        RegExp(
+            r'books\.google\.[^/]+/books\?.*?isbn=(\d{9}[\dX])'), // ISBN pattern
+        RegExp(r'books\.google\.[^/]+/books\?.*?id=([^&]+)'), // Book ID pattern
+        RegExp(
+            r'books\.google\.[^/]+/books\?.*?title=([^&]+)'), // Title pattern
+      ];
+
+      // AbeBooks URL patterns
+      final abePatterns = [
+        RegExp(r'abebooks\.[^/]+/.*?/(\d{9}[\dX])'), // ISBN pattern
+        RegExp(r'abebooks\.[^/]+/.*?/title/([^/]+)'), // Title pattern
+        RegExp(r'abebooks\.[^/]+/.*?/dp/([A-Z0-9]{10})'), // ASIN pattern
+        RegExp(
+            r'abebooks\.[^/]+/.*?/product/([A-Z0-9]{10})'), // Product ID pattern
+        RegExp(
+            r'abebooks\.[^/]+/.*?/search/.*?/([^/]+)'), // Search result pattern
+      ];
+
+      // Try to find ISBN or title from Amazon
+      for (var pattern in amazonPatterns) {
+        final match = pattern.firstMatch(url);
+        if (match != null) {
+          final value = match.group(1);
+          if (value != null) {
+            if (value.length == 10 || value.length == 13) {
+              isbn = value;
+            } else {
+              title = Uri.decodeComponent(value.replaceAll('-', ' '));
+            }
+            break;
+          }
+        }
+      }
+
+      // Try to find ISBN or title from Google Books
+      if (isbn == null && title == null) {
+        for (var pattern in googlePatterns) {
+          final match = pattern.firstMatch(url);
+          if (match != null) {
+            final value = match.group(1);
+            if (value != null) {
+              if (value.length == 10 || value.length == 13) {
+                isbn = value;
+              } else {
+                title = Uri.decodeComponent(value.replaceAll('-', ' '));
+              }
+              break;
+            }
+          }
+        }
+      }
+
+      // Try to find ISBN or title from AbeBooks
+      if (isbn == null && title == null) {
+        for (var pattern in abePatterns) {
+          final match = pattern.firstMatch(url);
+          if (match != null) {
+            final value = match.group(1);
+            if (value != null) {
+              if (value.length == 10 || value.length == 13) {
+                isbn = value;
+              } else {
+                title = Uri.decodeComponent(value.replaceAll('-', ' '));
+              }
+              break;
+            }
+          }
+        }
+      }
+
+      // If we couldn't find ISBN or title in the URL, try scraping the website
+      if (isbn == null && title == null) {
+        try {
+          final response = await http.get(Uri.parse(url));
+          if (response.statusCode == 200) {
+            final html = response.body;
+
+            // Try to find ISBN in the HTML
+            final isbnPatterns = [
+              RegExp('ISBN[-\s]*(?:13|10)?[-\s]*[:=]?\s*(\\d{9}[\\dX])',
+                  caseSensitive: false),
+              RegExp(
+                  'ISBN[-\s]*(?:13|10)?[-\s]*[:=]?\s*(\\d{3}[- ]?\\d{1,5}[- ]?\\d{1,7}[- ]?\\d{1,6}[- ]?\\d)',
+                  caseSensitive: false),
+              RegExp('data-isbn=["\'](\\d{9}[\\dX])["\']',
+                  caseSensitive: false),
+              RegExp(
+                  'itemprop=["\']isbn["\']\s*content=["\'](\\d{9}[\\dX])["\']',
+                  caseSensitive: false),
+              // AbeBooks specific patterns
+              RegExp('class=["\']isbn["\']>.*?(\\d{9}[\\dX])<',
+                  caseSensitive: false),
+              RegExp('ISBN-13:.*?(\\d{9}[\\dX])', caseSensitive: false),
+              RegExp('ISBN-10:.*?(\\d{9}[\\dX])', caseSensitive: false),
+              RegExp('data-isbn-13=["\'](\\d{9}[\\dX])["\']',
+                  caseSensitive: false),
+              RegExp('data-isbn-10=["\'](\\d{9}[\\dX])["\']',
+                  caseSensitive: false),
+            ];
+
+            for (var pattern in isbnPatterns) {
+              final match = pattern.firstMatch(html);
+              if (match != null) {
+                final value = match.group(1);
+                if (value != null) {
+                  isbn = value.replaceAll(RegExp('[-\s]'), '');
+                  break;
+                }
+              }
+            }
+
+            // If no ISBN found, try to find the title
+            if (isbn == null) {
+              final titlePatterns = [
+                RegExp('<h1[^>]*>(.*?)</h1>', caseSensitive: false),
+                RegExp('<title>(.*?)</title>', caseSensitive: false),
+                RegExp('itemprop=["\']name["\']\s*content=["\'](.*?)["\']',
+                    caseSensitive: false),
+                RegExp('data-title=["\'](.*?)["\']', caseSensitive: false),
+                // AbeBooks specific patterns
+                RegExp('class=["\']title["\']>.*?<span[^>]*>(.*?)</span>',
+                    caseSensitive: false),
+                RegExp('class=["\']book-title["\']>(.*?)</',
+                    caseSensitive: false),
+                RegExp('data-title=["\'](.*?)["\']', caseSensitive: false),
+                RegExp('class=["\']product-title["\']>(.*?)</',
+                    caseSensitive: false),
+              ];
+
+              for (var pattern in titlePatterns) {
+                final match = pattern.firstMatch(html);
+                if (match != null) {
+                  final value = match.group(1);
+                  if (value != null) {
+                    // Clean up the title
+                    title = value
+                        .replaceAll(RegExp('<[^>]*>'), '') // Remove HTML tags
+                        .replaceAll(
+                            RegExp('&[^;]+;'), '') // Remove HTML entities
+                        .replaceAll(RegExp('\\s+'), ' ') // Normalize whitespace
+                        .trim();
+
+                    // Remove common suffixes like "| AbeBooks" or "- Google Books"
+                    title = title.replaceAll(RegExp('\\s*[|]\\s*.*\$'), '');
+                    title = title.replaceAll(RegExp('\\s*-\\s*.*\$'), '');
+                    title =
+                        title.replaceAll(RegExp('\\s*\\|\\s*AbeBooks.*\$'), '');
+                    title = title.replaceAll(RegExp('\\s*\\|\\s*Book.*\$'), '');
+                    break;
+                  }
+                }
+              }
+            }
+
+            // If still no title found, try to extract from meta tags
+            if (isbn == null && title == null) {
+              final metaPatterns = [
+                RegExp(
+                    '<meta[^>]*name=["\']description["\'][^>]*content=["\'](.*?)["\']',
+                    caseSensitive: false),
+                RegExp(
+                    '<meta[^>]*property=["\']og:title["\'][^>]*content=["\'](.*?)["\']',
+                    caseSensitive: false),
+                RegExp(
+                    '<meta[^>]*name=["\']keywords["\'][^>]*content=["\'](.*?)["\']',
+                    caseSensitive: false),
+              ];
+
+              for (var pattern in metaPatterns) {
+                final match = pattern.firstMatch(html);
+                if (match != null) {
+                  final value = match.group(1);
+                  if (value != null) {
+                    // Clean up the title
+                    title = value
+                        .replaceAll(RegExp('<[^>]*>'), '')
+                        .replaceAll(RegExp('&[^;]+;'), '')
+                        .replaceAll(RegExp('\\s+'), ' ')
+                        .trim();
+
+                    // Remove common suffixes
+                    title = title.replaceAll(RegExp('\\s*[|]\\s*.*\$'), '');
+                    title = title.replaceAll(RegExp('\\s*-\\s*.*\$'), '');
+                    title =
+                        title.replaceAll(RegExp('\\s*\\|\\s*AbeBooks.*\$'), '');
+                    title = title.replaceAll(RegExp('\\s*\\|\\s*Book.*\$'), '');
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          print('Error scraping website: $e');
+        }
+      }
+
+      if (isbn != null) {
+        // Process the ISBN using existing functionality
+        await _processScannedISBN(isbn);
+      } else if (title != null) {
+        // Search by title
+        final book = await _bookService!.searchBookByTitle(title);
+        if (book != null) {
+          if (!mounted) return;
+          setState(() {
+            _isLoading = false;
+          });
+          _showBookDetails(book, isScanned: true);
+        } else {
+          throw Exception('Could not find book with title: $title');
+        }
+      } else {
+        throw Exception('Could not find ISBN or title in the provided link');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Error processing link: $e';
+        });
+        ScaffoldMessenger.of(_buildContext).showSnackBar(
+          SnackBar(content: Text('Error processing link: $e')),
+        );
+      }
     }
   }
 }

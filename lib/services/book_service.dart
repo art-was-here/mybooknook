@@ -408,4 +408,71 @@ class BookService {
       throw Exception(errorMessage);
     }
   }
+
+  Future<Book?> searchBookByTitle(String title) async {
+    print('Searching book by title: $title');
+    final booksApi = await _getBooksApi();
+    if (booksApi == null) {
+      print('Books API unavailable');
+      return null;
+    }
+
+    try {
+      print('Querying Google Books API with title: $title');
+      final response = await booksApi.volumes.list(
+        'intitle:$title',
+        orderBy: 'relevance',
+        printType: 'books',
+        maxResults: 1,
+        langRestrict: 'en',
+      );
+
+      print('API response received: items=${response.items?.length ?? 0}');
+      if (response.items != null && response.items!.isNotEmpty) {
+        final bookData = response.items![0].volumeInfo!;
+        print('Book data: title=${bookData.title}');
+
+        // Extract ISBN from industry identifiers
+        String isbn = '';
+        if (bookData.industryIdentifiers != null) {
+          for (var id in bookData.industryIdentifiers!) {
+            if (id.type == 'ISBN_13' || id.type == 'ISBN_10') {
+              isbn = id.identifier ?? '';
+              break;
+            }
+          }
+        }
+
+        return Book(
+          title: bookData.title ?? 'Unknown Title',
+          description: bookData.description ?? 'No description available',
+          isbn: isbn,
+          imageUrl: bookData.imageLinks?.thumbnail,
+          averageRating: bookData.averageRating,
+          ratingsCount: bookData.ratingsCount,
+          authors: bookData.authors,
+          categories: bookData.categories,
+          publisher: bookData.publisher,
+          publishedDate: bookData.publishedDate,
+          pageCount: bookData.pageCount,
+        );
+      } else {
+        print('No books found for title: $title');
+        return null;
+      }
+    } catch (e, stackTrace) {
+      print('Error searching book by title: $e');
+      print('Stack trace: $stackTrace');
+      String errorMessage = 'Error searching book by title: $e';
+      if (e.toString().contains('403') ||
+          e.toString().contains('access_denied')) {
+        errorMessage =
+            'Access blocked: myBookNook is not verified with Google. Contact the developer to add you as a tester or wait for verification.';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage)),
+      );
+      return null;
+    }
+  }
 }
