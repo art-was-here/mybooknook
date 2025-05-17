@@ -360,8 +360,9 @@ class _MyAppState extends State<MyApp> {
         );
       },
       initialRoute: '/',
-      routes: {
-        '/': (context) => StreamBuilder<User?>(
+      onGenerateRoute: (settings) {
+        final routes = {
+          '/': (context) => StreamBuilder<User?>(
               stream: FirebaseAuth.instance.authStateChanges(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
@@ -426,23 +427,53 @@ class _MyAppState extends State<MyApp> {
                     );
                   },
                 );
-              },
-            ),
-        '/login': (context) => const AuthScreen(),
-        '/username-setup': (context) => const UsernameSetupScreen(),
-        '/settings': (context) => SettingsScreen(
-              onThemeChanged: _onThemeChanged,
-              onAccentColorChanged: _onAccentColorChanged,
-              onSortOrderChanged: (value) {
-                // TODO: Implement sort order change
-              },
-              accentColor: _accentColor,
-            ),
-        '/profile': (context) => const ProfileScreen(),
-        '/search': (context) => const SearchScreen(),
-        '/notifications': (context) => const NotificationsScreen(),
-        '/messages': (context) => const MessagesScreen(),
-        // ChatRoomScreen requires parameters, so we navigate to it directly from MessagesScreen
+              }),
+          '/login': (context) => const AuthScreen(),
+          '/username-setup': (context) => const UsernameSetupScreen(),
+          '/settings': (context) => SettingsScreen(
+                onThemeChanged: _onThemeChanged,
+                onAccentColorChanged: _onAccentColorChanged,
+                onSortOrderChanged: (value) {
+                  // TODO: Implement sort order change
+                },
+                accentColor: _accentColor,
+              ),
+          '/profile': (context) => const ProfileScreen(),
+          '/search': (context) => const SearchScreen(),
+          '/notifications': (context) => const NotificationsScreen(),
+          '/messages': (context) => const MessagesScreen(),
+        };
+
+        return PageRouteBuilder(
+          settings: settings,
+          pageBuilder: (context, animation, secondaryAnimation) {
+            // Get the route name from settings
+            final routeName = settings.name ?? '/';
+            // Get the route builder from the routes map
+            final routeBuilder = routes[routeName];
+            if (routeBuilder == null) {
+              return const Scaffold(
+                body: Center(
+                  child: Text('Route not found'),
+                ),
+              );
+            }
+            return routeBuilder(context);
+          },
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            const begin = Offset(1.0, 0.0);
+            const end = Offset.zero;
+            const curve = Curves.easeInOut;
+            var tween =
+                Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+            var offsetAnimation = animation.drive(tween);
+            return SlideTransition(
+              position: offsetAnimation,
+              child: child,
+            );
+          },
+          transitionDuration: const Duration(milliseconds: 300),
+        );
       },
     );
   }

@@ -77,7 +77,14 @@ class SideMenuState extends State<SideMenu> {
         Positioned.fill(
           child: GestureDetector(
             onHorizontalDragStart: (details) {
-              _dragStartX = details.globalPosition.dx;
+              // Only allow drag if we're at the root route
+              if (widget.navigatorKey.currentContext != null) {
+                final canPop =
+                    Navigator.canPop(widget.navigatorKey.currentContext!);
+                if (!canPop) {
+                  _dragStartX = details.globalPosition.dx;
+                }
+              }
             },
             onHorizontalDragUpdate: (details) {
               if (_dragStartX < 20 && !_isMenuOpen) {
