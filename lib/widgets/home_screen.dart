@@ -28,6 +28,7 @@ import 'home_screen/book_with_list.dart';
 import '../screens/settings_screen.dart';
 import '../screens/search_screen.dart';
 import 'package:http/http.dart' as http;
+import 'peekable_card.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
@@ -1175,89 +1176,246 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       ? _buildBookList()
                                       : _cachedBookList ?? _buildBookList(),
                         ),
+                        // Add bottom padding
+                        SizedBox(height: 20),
                       ],
+                    ),
+                  ),
+                ),
+                // Peekable card
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Card(
+                    elevation: 2,
+                    margin: EdgeInsets.zero,
+                    child: PeekableCard(
+                      peekHeight: 80.0,
+                      expandedHeight: 140.0,
+                      backgroundColor: Color.lerp(
+                              Theme.of(context).cardColor, Colors.white, 0.1) ??
+                          Theme.of(context).cardColor,
+                      child: Builder(
+                        builder: (context) => SizedBox(
+                          height: 80.0,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: Icon(
+                                          Icons.search,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                          size: 23,
+                                        ),
+                                        padding: EdgeInsets.zero,
+                                        visualDensity: VisualDensity.compact,
+                                        constraints: const BoxConstraints(
+                                          minWidth: 36,
+                                          minHeight: 36,
+                                        ),
+                                        onPressed: () {
+                                          _showBookSearchSheet();
+                                        },
+                                      ),
+                                      Text(
+                                        'Search',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall
+                                            ?.copyWith(fontSize: 10),
+                                      ),
+                                    ],
+                                  ),
+                                  Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: Icon(
+                                          Icons.text_snippet,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                          size: 23,
+                                        ),
+                                        padding: EdgeInsets.zero,
+                                        visualDensity: VisualDensity.compact,
+                                        constraints: const BoxConstraints(
+                                          minWidth: 36,
+                                          minHeight: 36,
+                                        ),
+                                        onPressed: () async {
+                                          await scanTextFromImage();
+                                        },
+                                      ),
+                                      Text(
+                                        'Scan',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall
+                                            ?.copyWith(fontSize: 10),
+                                      ),
+                                    ],
+                                  ),
+                                  Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: Icon(
+                                          Icons.link,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                          size: 23,
+                                        ),
+                                        padding: EdgeInsets.zero,
+                                        visualDensity: VisualDensity.compact,
+                                        constraints: const BoxConstraints(
+                                          minWidth: 36,
+                                          minHeight: 36,
+                                        ),
+                                        onPressed: () async {
+                                          await _showLinkInputDialog();
+                                        },
+                                      ),
+                                      Text(
+                                        'Link',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall
+                                            ?.copyWith(fontSize: 10),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 0),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
-            floatingActionButtonLocation:
-                FloatingActionButtonLocation.endDocked,
-            floatingActionButton: Container(
-              margin: const EdgeInsets.only(bottom: 0.0),
-              child: ExpandableFab(
-                key: _fabKey,
-                distance: 112.0,
-                type: ExpandableFabType.fan,
-                fanAngle: 90,
-                openButtonBuilder: RotateFloatingActionButtonBuilder(
-                  child: const Icon(Icons.add),
-                  fabSize: ExpandableFabSize.regular,
-                  shape: const CircleBorder(),
-                  angle: 3.14 * 2,
-                  backgroundColor:
-                      Color.lerp(widget.accentColor, Colors.black, 0.03),
-                ),
-                closeButtonBuilder: RotateFloatingActionButtonBuilder(
-                  child: const Icon(Icons.close),
-                  fabSize: ExpandableFabSize.regular,
-                  shape: const CircleBorder(),
-                  angle: 3.14 * 2,
-                  backgroundColor:
-                      Color.lerp(widget.accentColor, Colors.black, 0.03),
-                ),
-                children: [
-                  FloatingActionButton(
-                    heroTag: 'fab_1',
-                    mini: true,
-                    child: const Icon(Icons.search),
-                    backgroundColor:
-                        Color.lerp(widget.accentColor, Colors.black, 0.03),
-                    onPressed: () {
-                      final state = _fabKey.currentState;
-                      if (state != null) {
-                        state.toggle();
-                      }
-                      print('Showing search sheet');
-                      _showBookSearchSheet();
-                    },
-                  ),
-                  FloatingActionButton(
-                    heroTag: 'fab_2',
-                    mini: true,
-                    child: const Icon(Icons.text_snippet),
-                    backgroundColor:
-                        Color.lerp(widget.accentColor, Colors.black, 0.03),
-                    onPressed: () async {
-                      final state = _fabKey.currentState;
-                      if (state != null) {
-                        state.toggle();
-                      }
-                      print('Starting text scan');
-                      await scanTextFromImage();
-                    },
-                  ),
-                  FloatingActionButton(
-                    heroTag: 'fab_3',
-                    mini: true,
-                    child: const Icon(Icons.link),
-                    backgroundColor:
-                        Color.lerp(widget.accentColor, Colors.black, 0.03),
-                    onPressed: () async {
-                      final state = _fabKey.currentState;
-                      if (state != null) {
-                        state.toggle();
-                      }
-                      print('Opening link input dialog');
-                      await _showLinkInputDialog();
-                    },
-                  ),
-                ],
+            floatingActionButton: ExpandableFab(
+              key: _fabKey,
+              distance: 112.0,
+              type: ExpandableFabType.fan,
+              fanAngle: 90,
+              openButtonBuilder: RotateFloatingActionButtonBuilder(
+                child: const Icon(Icons.add),
+                fabSize: ExpandableFabSize.regular,
+                shape: const CircleBorder(),
+                angle: 3.14 * 2,
+                backgroundColor:
+                    Color.lerp(widget.accentColor, Colors.black, 0.03),
               ),
+              closeButtonBuilder: RotateFloatingActionButtonBuilder(
+                child: const Icon(Icons.close),
+                fabSize: ExpandableFabSize.regular,
+                shape: const CircleBorder(),
+                angle: 3.14 * 2,
+                backgroundColor:
+                    Color.lerp(widget.accentColor, Colors.black, 0.03),
+              ),
+              children: [
+                FloatingActionButton(
+                  heroTag: 'fab_1',
+                  mini: true,
+                  child: const Icon(Icons.search),
+                  backgroundColor:
+                      Color.lerp(widget.accentColor, Colors.black, 0.03),
+                  onPressed: () {
+                    final state = _fabKey.currentState;
+                    if (state != null) {
+                      state.toggle();
+                    }
+                    print('Showing search sheet');
+                    _showBookSearchSheet();
+                  },
+                ),
+                FloatingActionButton(
+                  heroTag: 'fab_2',
+                  mini: true,
+                  child: const Icon(Icons.text_snippet),
+                  backgroundColor:
+                      Color.lerp(widget.accentColor, Colors.black, 0.03),
+                  onPressed: () async {
+                    final state = _fabKey.currentState;
+                    if (state != null) {
+                      state.toggle();
+                    }
+                    print('Starting text scan');
+                    await scanTextFromImage();
+                  },
+                ),
+                FloatingActionButton(
+                  heroTag: 'fab_3',
+                  mini: true,
+                  child: const Icon(Icons.link),
+                  backgroundColor:
+                      Color.lerp(widget.accentColor, Colors.black, 0.03),
+                  onPressed: () async {
+                    final state = _fabKey.currentState;
+                    if (state != null) {
+                      state.toggle();
+                    }
+                    print('Opening link input dialog');
+                    await _showLinkInputDialog();
+                  },
+                ),
+              ],
             ),
+            floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSimpleButton(
+    BuildContext context,
+    IconData icon,
+    String label,
+    VoidCallback onTap,
+  ) {
+    // Simple icon-only button to prevent overflow
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        height: 40,
+        width: 60,
+        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              color: Theme.of(context).colorScheme.primary,
+              size: 20,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
