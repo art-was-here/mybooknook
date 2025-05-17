@@ -140,7 +140,7 @@ class BookSearchSheet {
                                                 .doc(user.uid)
                                                 .collection('lists')
                                                 .where('name',
-                                                    isNotEqualTo: 'Home')
+                                                    isNotEqualTo: 'Library')
                                                 .get();
 
                                         final lists =

@@ -533,6 +533,44 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
+      // First, clean up any duplicate Home lists
+      final homeLists = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('lists')
+          .where('name', isEqualTo: 'Home')
+          .get();
+
+      if (homeLists.docs.isNotEmpty) {
+        print('Found ${homeLists.docs.length} Home lists to clean up');
+        final batch = FirebaseFirestore.instance.batch();
+
+        // Move books from Home lists to Library list
+        for (var homeList in homeLists.docs) {
+          final books = await homeList.reference.collection('books').get();
+          for (var book in books.docs) {
+            // Move book to Library list
+            final libraryList = await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .collection('lists')
+                .where('name', isEqualTo: 'Library')
+                .limit(1)
+                .get();
+
+            if (libraryList.docs.isNotEmpty) {
+              await libraryList.docs.first.reference
+                  .collection('books')
+                  .doc(book.id)
+                  .set(book.data());
+            }
+          }
+          // Delete the Home list
+          batch.delete(homeList.reference);
+        }
+        await batch.commit();
+      }
+
       print('Checking for Library list');
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
@@ -743,6 +781,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           .collection('users')
           .doc(user.uid)
           .collection('lists')
+          .where('name', isNotEqualTo: 'Library') // Filter out Library list
           .get();
 
       final lists = listsSnapshot.docs.map((doc) {
@@ -752,6 +791,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           'name': data['name'] as String? ?? 'Unknown List',
         };
       }).toList();
+
+      if (lists.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(_buildContext).showSnackBar(
+          const SnackBar(
+            content: Text('Please create a list first before adding books'),
+          ),
+        );
+        return;
+      }
 
       if (!mounted) return;
 
