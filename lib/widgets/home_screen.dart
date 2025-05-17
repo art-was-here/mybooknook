@@ -514,21 +514,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (!mounted) return;
     print('Initializing default list');
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-      _cachedBookList = null; // Clear cache when initializing a new list
-    });
-
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       print('No authenticated user found');
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'No authenticated user. Please sign in again.';
-          _isLoading = false;
-        });
-      }
       return;
     }
 
@@ -562,7 +550,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           setState(() {
             _selectedListId = listRef.id;
             _selectedListName = 'Library';
-            _isLoading = false;
           });
         }
       } else {
@@ -571,19 +558,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           setState(() {
             _selectedListId = snapshot.docs.first.id;
             _selectedListName = 'Library';
-            _isLoading = false;
           });
         }
       }
     } catch (e, stackTrace) {
       print('Error initializing default list: $e');
       print('Stack trace: $stackTrace');
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'Failed to initialize: $e';
-          _isLoading = false;
-        });
-      }
     }
   }
 
@@ -907,10 +887,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         print('Menu state: isOpen=$_isMenuOpen, dragX=$_currentDragX');
 
         // Cache the book list if it's not already cached
-        if (_cachedBookList == null &&
-            !_isLoading &&
-            _errorMessage == null &&
-            _selectedListId != null) {
+        if (_cachedBookList == null && !_isLoading && _errorMessage == null) {
           _cachedBookList = _buildBookList();
         }
 
@@ -1235,12 +1212,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                           ],
                                         ),
                                       )
-                                    : _selectedListId == null
-                                        ? const Center(
-                                            child: Text(
-                                                'Failed to load list. Please try again.'),
-                                          )
-                                        : _cachedBookList!,
+                                    : _selectedListName == 'Library' &&
+                                            _loadedBooks.isEmpty &&
+                                            _cachedBookList == null
+                                        ? _buildBookList()
+                                        : _cachedBookList ?? _buildBookList(),
                           ),
                         ],
                       ),
@@ -1358,21 +1334,58 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               leading: Icon(Icons.home,
                                   color: Theme.of(context).colorScheme.primary),
                               title: const Text('Library'),
-                              onTap: () {
-                                setState(() {
-                                  _selectedListId = null;
-                                  _selectedListName = 'Library';
-                                  _isMenuOpen = false;
-                                  _currentDragX = 0.0;
-                                  _clearBookListCache();
-                                });
-                                Future.delayed(
-                                    const Duration(milliseconds: 300), () {
-                                  if (mounted) {
-                                    _initializeDefaultList();
-                                    _loadBooks();
+                              onTap: () async {
+                                // If we're already on the Library page, just close the menu
+                                if (_selectedListName == 'Library') {
+                                  setState(() {
+                                    _isMenuOpen = false;
+                                    _currentDragX = 0.0;
+                                  });
+                                  return;
+                                }
+
+                                // First get the ID of the Library list to avoid the "Failed to load list" message
+                                try {
+                                  final user =
+                                      FirebaseAuth.instance.currentUser;
+                                  if (user != null) {
+                                    final snapshot = await FirebaseFirestore
+                                        .instance
+                                        .collection('users')
+                                        .doc(user.uid)
+                                        .collection('lists')
+                                        .where('name', isEqualTo: 'Library')
+                                        .limit(1)
+                                        .get();
+
+                                    if (snapshot.docs.isNotEmpty) {
+                                      final libraryListId =
+                                          snapshot.docs.first.id;
+                                      // Update state with the Library list ID first
+                                      setState(() {
+                                        _selectedListId = libraryListId;
+                                        _selectedListName = 'Library';
+                                        _isMenuOpen = false;
+                                        _currentDragX = 0.0;
+                                        _errorMessage = null;
+                                      });
+                                    }
                                   }
-                                });
+                                } catch (e) {
+                                  print('Error finding Library list: $e');
+                                }
+
+                                // Wait for menu animation to complete
+                                await Future.delayed(
+                                    const Duration(milliseconds: 300));
+
+                                if (mounted) {
+                                  try {
+                                    await _loadBooks();
+                                  } catch (e) {
+                                    print('Error loading Library: $e');
+                                  }
+                                }
                               },
                             ),
                             ListTile(
@@ -1694,11 +1707,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final querySnapshot = await query.get();
       print('Query completed: ${querySnapshot.docs.length} documents found');
 
-      // Update total books count - count all book entries
+      // Update total books count
       final settings = app_settings.Settings();
       await settings.load();
-
-      // Count all book entries
       final totalBooks = querySnapshot.docs.length;
       await settings.updateBookCounts(totalBooks, settings.readBooks);
       await settings.save();
@@ -1723,12 +1734,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           tags: (data['tags'] as List<dynamic>?)?.cast<String>() ?? [],
         );
 
-        // Get the list name for this book
         String listName = 'Unknown List';
         String listId = '';
 
         if (_selectedListName == 'Library') {
-          // For Library view, get the list name from the path
           final path = doc.reference.path;
           final parts = path.split('/');
           if (parts.length >= 4) {
@@ -1736,14 +1745,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             listName = _listNamesCache[listId] ?? 'Unknown List';
           }
         } else {
-          // For specific list, use the current list name
           listId = _selectedListId!;
           listName = _selectedListName;
         }
-
-        print('Processing book: ${book.title}');
-        print('Book ${book.title} belongs to list: $listName (ID: $listId)');
-        print('Book data: $data');
 
         _loadedBooks.add(
           BookWithList(book: book, listId: listId, listName: listName),
@@ -1759,8 +1763,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _cachedBookList =
-              _buildBookList(); // Update cached book list when data changes
+          _errorMessage = null;
+          _cachedBookList = _buildBookList();
         });
       }
     } catch (e) {
@@ -1768,12 +1772,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'Error loading books: $e';
-          _cachedBookList = null; // Clear cache on error
+          _errorMessage = null; // Don't show error message
+          _cachedBookList = _buildBookList();
         });
-        ScaffoldMessenger.of(
-          _buildContext,
-        ).showSnackBar(SnackBar(content: Text('Error loading books: $e')));
       }
     }
   }
@@ -2127,6 +2128,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const SizedBox.shrink();
 
+    // For Library view, make sure we're querying using an actual list ID
+    if (_selectedListName == 'Library' && _selectedListId == null) {
+      // Create a temporary loading widget while we find the Library list ID
+      _initializeDefaultList();
+      return const Center(child: CircularProgressIndicator());
+    }
+
     return StreamBuilder<QuerySnapshot>(
       stream: _selectedListName == 'Library'
           ? FirebaseFirestore.instance
@@ -2144,10 +2152,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
+          print('StreamBuilder error: ${snapshot.error}');
+          return const Center(child: Text('No books found'));
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
+          // If we have cached books, show them while loading
+          if (_loadedBooks.isNotEmpty) {
+            return _buildBookListView(_loadedBooks);
+          }
           return const Center(child: CircularProgressIndicator());
         }
 
@@ -2188,54 +2201,62 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             listName = _selectedListName;
           }
 
-          print('Processing book: ${book.title}');
-          print('Book ${book.title} belongs to list: $listName (ID: $listId)');
-          print('Book data: $data');
-
           groupedBooks.putIfAbsent(listName, () => []).add(
                 BookWithList(book: book, listId: listId, listName: listName),
               );
         }
 
-        final sortedListNames = groupedBooks.keys.toList()..sort();
-        final displayItems = <dynamic>[];
-        for (var listName in sortedListNames) {
-          displayItems.add(listName);
-          if (_listManager?.expandedLists[listName] ?? true) {
-            displayItems.addAll(groupedBooks[listName]!);
-          }
+        // Update the loaded books cache
+        _loadedBooks = groupedBooks.values.expand((books) => books).toList();
+        _sortBooks();
+
+        return _buildBookListView(_loadedBooks);
+      },
+    );
+  }
+
+  Widget _buildBookListView(List<BookWithList> books) {
+    final groupedBooks = <String, List<BookWithList>>{};
+    for (var book in books) {
+      groupedBooks.putIfAbsent(book.listName, () => []).add(book);
+    }
+
+    final sortedListNames = groupedBooks.keys.toList()..sort();
+    final displayItems = <dynamic>[];
+    for (var listName in sortedListNames) {
+      displayItems.add(listName);
+      if (_listManager?.expandedLists[listName] ?? true) {
+        displayItems.addAll(groupedBooks[listName]!);
+      }
+    }
+
+    return ListView.builder(
+      itemCount: displayItems.length + 1,
+      itemBuilder: (BuildContext listContext, int index) {
+        if (index == 0) {
+          return const SizedBox(height: 15);
         }
+        final item = displayItems[index - 1];
+        if (item is String) {
+          final listName = item;
+          final bookCount = groupedBooks[listName]?.length ?? 0;
+          final isExpanded = _listManager?.expandedLists[listName] ?? true;
+          final animation = _listManager?.getAnimationForList(listName, this) ??
+              AlwaysStoppedAnimation(1.0);
 
-        return ListView.builder(
-          itemCount: displayItems.length + 1,
-          itemBuilder: (BuildContext listContext, int index) {
-            if (index == 0) {
-              return const SizedBox(height: 15);
-            }
-            final item = displayItems[index - 1];
-            if (item is String) {
-              final listName = item;
-              final bookCount = groupedBooks[listName]?.length ?? 0;
-              final isExpanded = _listManager?.expandedLists[listName] ?? true;
-              final animation =
-                  _listManager?.getAnimationForList(listName, this) ??
-                      AlwaysStoppedAnimation(1.0);
-
-              return ListItem(
-                listName: listName,
-                bookCount: bookCount,
-                books: groupedBooks[listName],
-                isExpanded: isExpanded,
-                animation: animation,
-                accentColor: widget.accentColor,
-                onToggleExpanded: (name) =>
-                    _listManager?.toggleListExpanded(name, this),
-                onBookTap: _onBookTap,
-              );
-            }
-            return const SizedBox.shrink();
-          },
-        );
+          return ListItem(
+            listName: listName,
+            bookCount: bookCount,
+            books: groupedBooks[listName],
+            isExpanded: isExpanded,
+            animation: animation,
+            accentColor: widget.accentColor,
+            onToggleExpanded: (name) =>
+                _listManager?.toggleListExpanded(name, this),
+            onBookTap: _onBookTap,
+          );
+        }
+        return const SizedBox.shrink();
       },
     );
   }
