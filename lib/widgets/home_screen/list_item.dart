@@ -45,6 +45,7 @@ class _ListItemState extends State<ListItem> {
                 // Header section with book covers, list name, count, and expand arrow
                 InkWell(
                   onTap: () => widget.onToggleExpanded(widget.listName),
+                  borderRadius: BorderRadius.circular(4),
                   child: Padding(
                     padding: const EdgeInsets.all(12.0),
                     child: Row(
