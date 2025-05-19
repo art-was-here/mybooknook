@@ -773,6 +773,10 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
                           final selectedList =
                               await SelectListDialog.show(context, widget.book);
                           if (selectedList != null) {
+                            setState(() {
+                              _selectedListId = selectedList['id'];
+                              _selectedListName = selectedList['name'];
+                            });
                             _handleClose();
                           }
                         },

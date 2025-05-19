@@ -1302,9 +1302,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     try {
       // First, ensure we have the list names cache populated
-      if (_selectedListName == 'Library') {
-        await _fetchListNames(user.uid);
-      }
+      // Always refresh list names to get the latest data
+      await _fetchListNames(user.uid);
 
       Query query;
       if (_selectedListName == 'Library') {
@@ -1866,6 +1865,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _selectedListId,
         _selectedListName,
         _bookService!,
+        onListCreated: () {
+          // Clear cache and reload books when a new list is created
+          _clearListNamesCache();
+          _loadBooks();
+        },
       );
     }
   }

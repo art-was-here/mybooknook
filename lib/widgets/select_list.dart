@@ -93,9 +93,9 @@ class SelectListDialog {
                                 ),
                                 TextButton(
                                   onPressed: () {
-                                    final value = textController.text.trim();
-                                    if (value.isNotEmpty) {
-                                      Navigator.pop(newListContext, value);
+                                    if (textController.text.trim().isNotEmpty) {
+                                      Navigator.pop(newListContext,
+                                          textController.text.trim());
                                     }
                                   },
                                   child: const Text('Create'),
@@ -139,7 +139,10 @@ class SelectListDialog {
                                       'Added "${book.title}" to $newListName'),
                                 ),
                               );
-                              Navigator.pop(context);
+                              Navigator.pop(context, {
+                                'id': newListRef.id,
+                                'name': newListName,
+                              });
                             }
                           } catch (e) {
                             if (context.mounted) {

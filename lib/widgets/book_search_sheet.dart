@@ -3,14 +3,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../models/book.dart';
 import '../services/book_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'home_screen.dart';
 
 class BookSearchSheet {
-  static void show(
-    BuildContext context,
-    String? listId,
-    String listName,
-    BookService bookService,
-  ) {
+  static void show(BuildContext context, String? listId, String listName,
+      BookService bookService,
+      {VoidCallback? onListCreated}) {
     final TextEditingController controller = TextEditingController();
     List<Book> searchResults = [];
     ScrollController? _scrollController;
@@ -335,6 +334,16 @@ class BookSearchSheet {
                                                                         .serverTimestamp(),
                                                               });
 
+                                                              // Manually force a refresh of the list names cache
+                                                              // This is a workaround for the "Unknown List" issue
+                                                              final prefs =
+                                                                  await SharedPreferences
+                                                                      .getInstance();
+                                                              await prefs.remove(
+                                                                  'list_names_cache');
+                                                              await prefs.remove(
+                                                                  'list_names_timestamp');
+
                                                               if (context
                                                                   .mounted) {
                                                                 ScaffoldMessenger.of(
@@ -345,8 +354,21 @@ class BookSearchSheet {
                                                                         'Added "${book.title}" to $newListName'),
                                                                   ),
                                                                 );
+
+                                                                // Call the callback if provided to refresh the parent screen
+                                                                if (onListCreated !=
+                                                                    null) {
+                                                                  onListCreated();
+                                                                }
+
                                                                 Navigator.pop(
-                                                                    context);
+                                                                    context, {
+                                                                  'id':
+                                                                      newListRef
+                                                                          .id,
+                                                                  'name':
+                                                                      newListName,
+                                                                });
                                                               }
                                                             } catch (e) {
                                                               if (context
@@ -422,9 +444,17 @@ class BookSearchSheet {
                                             .set({
                                           ...book.toMap(),
                                           'userId': user.uid,
+                                          'listName': selectedList['name'],
                                           'createdAt':
                                               FieldValue.serverTimestamp(),
                                         });
+
+                                        // Ensure the list names cache is refreshed
+                                        final prefs = await SharedPreferences
+                                            .getInstance();
+                                        await prefs.remove('list_names_cache');
+                                        await prefs
+                                            .remove('list_names_timestamp');
 
                                         if (context.mounted) {
                                           ScaffoldMessenger.of(context)
@@ -434,6 +464,12 @@ class BookSearchSheet {
                                                   'Added "${book.title}" to ${selectedList['name']}'),
                                             ),
                                           );
+
+                                          // Call the callback if provided to refresh the parent screen
+                                          if (onListCreated != null) {
+                                            onListCreated();
+                                          }
+
                                           Navigator.pop(context);
                                         }
                                       } catch (e) {
