@@ -59,6 +59,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _username = '';
   DateTime? _birthday;
   int _friendCount = 0;
+  late app_settings.Settings _settings;
 
   @override
   void initState() {
@@ -77,6 +78,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _initializeData() async {
     print('DEBUG: -------- Profile Loading Process Started --------');
     print('DEBUG: Starting initialization');
+
+    // Initialize settings
+    _settings = app_settings.Settings();
+    await _settings.load();
 
     // Load cached data first
     await _loadCachedData();
@@ -100,6 +105,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (user == null) return;
 
     try {
+      print('DEBUG: Starting Firebase sync');
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
@@ -107,6 +113,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
+        print('DEBUG: User data from Firebase: ${data.toString()}');
 
         // Check if we need to update local data
         bool needsUpdate = false;
@@ -144,6 +151,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _aboutMe = newBio;
           _bioController.text = newBio;
           needsUpdate = true;
+        }
+
+        // Check birthday
+        final newBirthday =
+            data['birthday'] != null ? DateTime.parse(data['birthday']) : null;
+        print('DEBUG: Birthday from Firebase: $newBirthday');
+        print('DEBUG: Current birthday: $_birthday');
+        if (newBirthday != _birthday) {
+          print('DEBUG: Updating birthday to: $newBirthday');
+          _birthday = newBirthday;
+          needsUpdate = true;
+        }
+
+        // Load settings to check birthday visibility
+        final settingsDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('settings')
+            .doc('app_settings')
+            .get();
+
+        print('DEBUG: Settings from Firebase: ${settingsDoc.data()}');
+        if (settingsDoc.exists) {
+          final showBirthday = settingsDoc.data()?['showBirthday'] ?? false;
+          print('DEBUG: Show birthday setting: $showBirthday');
+          _settings.updateShowBirthday(showBirthday);
         }
 
         // Check other data
@@ -294,7 +327,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _saveProfileData() async {
-    print('Saving profile data to local storage');
+    print('DEBUG: Saving profile data to local storage');
     final prefs = await SharedPreferences.getInstance();
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -325,6 +358,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     // Save birthday with user-specific key
     if (_birthday != null) {
+      print(
+          'DEBUG: Saving birthday to local storage: ${_birthday!.toIso8601String()}');
       await prefs.setString(
           '${userPrefix}birthday', _birthday!.toIso8601String());
     }
@@ -402,12 +437,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadBookStats() async {
-    final settings = app_settings.Settings();
-    await settings.load();
+    await _settings.load();
 
     setState(() {
-      _totalBooks = settings.totalBooks;
-      _totalPages = settings.readBooks;
+      _totalBooks = _settings.totalBooks;
+      _totalPages = _settings.readBooks;
     });
   }
 
@@ -511,11 +545,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    print('DEBUG: Saving profile data');
+    print('DEBUG: Birthday to save: $_birthday');
+
     // Save to local storage first
     await _saveProfileData();
 
     // Then sync with Firebase
     try {
+      print('DEBUG: Saving to Firebase');
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
@@ -523,7 +561,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'bio': _bioController.text,
         'favoriteGenres': _selectedGenres,
         'lastUpdated': DateTime.now().toIso8601String(),
+        'birthday': _birthday?.toIso8601String(),
       });
+      print('DEBUG: Successfully saved to Firebase');
     } catch (e) {
       print('Error saving to Firebase: $e');
     }
@@ -846,8 +886,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print(
-        'build: isLoading: $_isLoading, hasImage: ${_base64Image != null}, isInitialized: $_isInitialized');
+    print('DEBUG: Building profile screen');
+    print('DEBUG: Birthday: $_birthday');
+    print('DEBUG: Show birthday setting: ${_settings.showBirthday}');
+    print('DEBUG: Is editing: $_isEditing');
 
     if (!_isInitialized) {
       return const Scaffold(
@@ -898,12 +940,64 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     children: [
                       _buildProfileHeader(),
                       const SizedBox(height: 16),
+                      if (_isEditing) ...[
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Personal Information',
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium,
+                                ),
+                                const SizedBox(height: 16),
+                                ListTile(
+                                  title: const Text('Birthday'),
+                                  subtitle: Text(
+                                    _birthday != null
+                                        ? DateFormat('MMMM d, y')
+                                            .format(_birthday!)
+                                        : 'Not set',
+                                  ),
+                                  trailing: const Icon(Icons.calendar_today),
+                                  onTap: () async {
+                                    final DateTime? picked =
+                                        await showDatePicker(
+                                      context: context,
+                                      initialDate: _birthday ?? DateTime.now(),
+                                      firstDate: DateTime(1900),
+                                      lastDate: DateTime.now(),
+                                    );
+                                    if (picked != null) {
+                                      setState(() {
+                                        _birthday = picked;
+                                      });
+                                      // Save immediately to ensure it's stored
+                                      await _saveProfile();
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       // Bio Section
                       Text(
                         'Bio',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 8),
+                      if (_birthday != null && _settings.showBirthday) ...[
+                        Text(
+                          'Birthday: ${DateFormat('MMMM d, y').format(_birthday!)}',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 8),
+                      ],
                       TextFormField(
                         controller: _bioController,
                         maxLines: 3,
@@ -1282,6 +1376,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     'Account age: $days days, $hours hours, $minutes minutes',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
+                  if (_birthday != null && _settings.showBirthday) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Birthday: ${DateFormat('MMMM d, y').format(_birthday!)}',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
                   const SizedBox(height: 4),
                   Row(
                     children: [

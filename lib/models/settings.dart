@@ -14,6 +14,7 @@ class Settings {
   static const String _accentColorKey = 'accent_color';
   static const String _sortOrderKey = 'sort_order';
   static const String _useMaterialYouKey = 'use_material_you';
+  static const String _showBirthdayKey = 'show_birthday';
 
   double _fontSize = 1.0;
   String _listDensity = 'comfortable';
@@ -25,6 +26,7 @@ class Settings {
   Color _accentColor = Colors.teal;
   String _sortOrder = 'title';
   bool _useMaterialYou = false;
+  bool _showBirthday = false;
 
   // Getters
   double get fontSize => _fontSize;
@@ -37,6 +39,7 @@ class Settings {
   Color get accentColor => _accentColor;
   String get sortOrder => _sortOrder;
   bool get useMaterialYou => _useMaterialYou;
+  bool get showBirthday => _showBirthday;
   double get readingProgress =>
       _totalBooks > 0 ? (_readBooks / _totalBooks) * 100 : 0;
 
@@ -63,6 +66,7 @@ class Settings {
     _accentColor = Color(prefs.getInt(_accentColorKey) ?? Colors.teal.value);
     _sortOrder = prefs.getString(_sortOrderKey) ?? 'title';
     _useMaterialYou = prefs.getBool(_useMaterialYouKey) ?? false;
+    _showBirthday = prefs.getBool(_showBirthdayKey) ?? false;
   }
 
   // Save settings to SharedPreferences
@@ -85,6 +89,7 @@ class Settings {
     await prefs.setInt(_accentColorKey, _accentColor.value);
     await prefs.setString(_sortOrderKey, _sortOrder);
     await prefs.setBool(_useMaterialYouKey, _useMaterialYou);
+    await prefs.setBool(_showBirthdayKey, _showBirthday);
   }
 
   Future<void> initialize() async {
@@ -140,6 +145,11 @@ class Settings {
           _useMaterialYou = data['useMaterialYou'] as bool;
           needsUpdate = true;
         }
+        if (data.containsKey('showBirthday') &&
+            data['showBirthday'] != _showBirthday) {
+          _showBirthday = data['showBirthday'] as bool;
+          needsUpdate = true;
+        }
 
         // Save to local storage if updates were needed
         if (needsUpdate) {
@@ -168,6 +178,7 @@ class Settings {
         'accentColor': _accentColor.value,
         'sortOrder': _sortOrder,
         'useMaterialYou': _useMaterialYou,
+        'showBirthday': _showBirthday,
         'lastUpdated': DateTime.now().toIso8601String(),
       });
     } catch (e) {
@@ -236,6 +247,12 @@ class Settings {
 
   Future<void> updateSortOrder(String order) async {
     _sortOrder = order;
+    await save();
+    await saveToFirebase();
+  }
+
+  Future<void> updateShowBirthday(bool show) async {
+    _showBirthday = show;
     await save();
     await saveToFirebase();
   }

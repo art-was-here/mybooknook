@@ -36,6 +36,8 @@ class _UserPageState extends State<UserPage> {
   List<Map<String, dynamic>> _favoriteBooks = [];
   DateTime? _createdAt;
   int _friendCount = 0;
+  DateTime? _birthday;
+  bool _showBirthday = false;
 
   @override
   void initState() {
@@ -92,6 +94,29 @@ class _UserPageState extends State<UserPage> {
             .collection('books')
             .where('isFavorite', isEqualTo: true)
             .get();
+
+        // Load birthday and visibility settings
+        final birthdayData = data['birthday'];
+        if (birthdayData != null) {
+          if (birthdayData is Timestamp) {
+            _birthday = birthdayData.toDate();
+          } else if (birthdayData is String) {
+            _birthday = DateTime.parse(birthdayData);
+          }
+        }
+
+        // Load user settings
+        final settingsDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(widget.userId)
+            .collection('settings')
+            .doc('app_settings')
+            .get();
+
+        if (settingsDoc.exists) {
+          final settingsData = settingsDoc.data();
+          _showBirthday = settingsData?['showBirthday'] ?? false;
+        }
 
         if (mounted) {
           setState(() {
@@ -269,6 +294,13 @@ class _UserPageState extends State<UserPage> {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 8),
+                      if (_birthday != null && _showBirthday) ...[
+                        Text(
+                          'Birthday: ${DateFormat('MMMM d, y').format(_birthday!)}',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 8),
+                      ],
                       Text(
                         _bio,
                         style: Theme.of(context).textTheme.bodyMedium,

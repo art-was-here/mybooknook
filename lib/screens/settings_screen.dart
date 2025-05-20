@@ -517,26 +517,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 LinearProgressIndicator(
-                                  value: _settings.readingProgress / 100,
-                                  backgroundColor: Theme.of(context)
-                                      .colorScheme
-                                      .surfaceVariant,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Theme.of(context).colorScheme.primary,
-                                  ),
+                                  value: _settings.totalBooks > 0
+                                      ? _settings.readBooks /
+                                          _settings.totalBooks
+                                      : 0,
+                                  backgroundColor: Colors.grey[200],
                                 ),
-                                const SizedBox(height: 9),
+                                const SizedBox(height: 10),
                                 Center(
                                   child: Text(
                                     'Tap for more information',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurfaceVariant,
-                                        ),
+                                    style:
+                                        Theme.of(context).textTheme.bodySmall,
                                   ),
                                 ),
                               ],
@@ -663,6 +655,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           : 'Never imported'),
                       trailing: const Icon(Icons.file_upload),
                       onTap: _importBooks,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 5.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Privacy',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 15.0),
+                      child: const Divider(height: 1),
+                    ),
+                    const SizedBox(height: 16),
+                    ListTile(
+                      title: const Text('Show Birthday on Profile'),
+                      subtitle: const Text(
+                          'Display your birthday on your public profile'),
+                      trailing: Switch(
+                        value: _settings.showBirthday,
+                        onChanged: (value) async {
+                          await _settings.updateShowBirthday(value);
+                          if (mounted) {
+                            setState(() {});
+                          }
+                        },
+                      ),
                     ),
                     ListTile(
                       title: const Text('Delete Account'),
