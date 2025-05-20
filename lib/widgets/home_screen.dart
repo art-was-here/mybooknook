@@ -34,12 +34,14 @@ class HomeScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
   final Color accentColor;
   final Function(Color) onAccentColorChanged;
+  final Function(bool)? onMaterialYouChanged;
 
   const HomeScreen({
     super.key,
     required this.onThemeChanged,
     required this.accentColor,
     required this.onAccentColorChanged,
+    this.onMaterialYouChanged,
   });
 
   @override
@@ -1019,11 +1021,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   },
                 );
               },
-              backgroundColor:
-                  Color.lerp(widget.accentColor, Colors.black, 0.1) ??
-                      widget.accentColor,
-              foregroundColor: Colors.white,
-              elevation: 8.0,
               shape: const CircleBorder(),
               child: const Icon(Icons.add),
             ),

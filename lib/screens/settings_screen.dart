@@ -2,17 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 import 'dart:convert';
 import '../models/settings.dart' as app_settings;
 import '../models/book.dart';
 import '../services/notification_service.dart';
 import '../services/update_service.dart';
+import '../main.dart';
 
 class SettingsScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
   final Function(Color) onAccentColorChanged;
   final Function(String) onSortOrderChanged;
   final Color accentColor;
+  final Function(bool)? onMaterialYouChanged;
 
   const SettingsScreen({
     super.key,
@@ -20,6 +23,7 @@ class SettingsScreen extends StatefulWidget {
     required this.onAccentColorChanged,
     required this.onSortOrderChanged,
     required this.accentColor,
+    this.onMaterialYouChanged,
   });
 
   @override
@@ -34,6 +38,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Color _selectedAccentColor = Colors.teal;
   String _sortOrder = 'title';
   Color _accentColor = Colors.teal;
+  bool _useMaterialYou = false;
   final NotificationService _notificationService = NotificationService();
   final UpdateService _updateService = UpdateService(
     owner: 'your-github-username', // Replace with your GitHub username
@@ -43,6 +48,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isTestingNotification = false;
   final ScrollController _scrollController = ScrollController();
   bool _isScrolled = false;
+  bool _dynamicColorsAvailable = false;
 
   @override
   void initState() {
@@ -50,6 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _selectedAccentColor = widget.accentColor;
     _loadSettings();
     _scrollController.addListener(_handleScroll);
+    _checkDynamicColorSupport();
   }
 
   @override
@@ -113,6 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _accentColor = _settings.accentColor;
           _selectedAccentColor = _settings.accentColor;
           _sortOrder = _settings.sortOrder;
+          _useMaterialYou = _settings.useMaterialYou;
           _isLoading = false;
         });
       }
@@ -149,13 +157,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Exported ${books.length} books')),
+          SnackBar(
+            content: Text('Exported ${books.length} books'),
+            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error exporting books: $e')),
+          SnackBar(
+            content: Text('Error exporting books: $e'),
+            backgroundColor: Theme.of(context).colorScheme.errorContainer,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }
@@ -165,7 +181,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // TODO: Implement book import functionality
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Import functionality coming soon!')),
+        SnackBar(
+          content: const Text('Import functionality coming soon!'),
+          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     }
   }
@@ -193,16 +213,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Account deleted successfully')),
+          SnackBar(
+            content: const Text('Account deleted successfully'),
+            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
         Navigator.of(context).pushReplacementNamed('/');
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error deleting account: $e')),
+          SnackBar(
+            content: Text('Error deleting account: $e'),
+            backgroundColor: Theme.of(context).colorScheme.errorContainer,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
+    }
+  }
+
+  void _checkDynamicColorSupport() {
+    try {
+      // We can't easily check if dynamic colors are available at runtime
+      // So initially we'll assume they are, and let the UI in main.dart
+      // determine if they're actually being applied
+      setState(() {
+        _dynamicColorsAvailable = true;
+      });
+
+      // We'll update this value when we get the first build with theme data
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final dynamicColorPrimary = Theme.of(context).colorScheme.primary;
+        final userAccentColor = widget.accentColor;
+
+        // If Material You is enabled and the primary color is different from the user's accent color,
+        // then dynamic colors are likely being applied
+        if (_useMaterialYou && dynamicColorPrimary != userAccentColor) {
+          setState(() {
+            _dynamicColorsAvailable = true;
+          });
+          print('Dynamic colors confirmed: primary=${dynamicColorPrimary}');
+        } else if (_useMaterialYou) {
+          // If Material You is enabled but the colors match the accent color,
+          // dynamic colors may not be available
+          print(
+              'Dynamic colors may not be available: primary=${dynamicColorPrimary}, accent=${userAccentColor}');
+        }
+      });
+    } catch (e) {
+      print('Error checking dynamic color support: $e');
+      setState(() {
+        _dynamicColorsAvailable = false;
+      });
     }
   }
 
@@ -231,10 +295,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
-        backgroundColor: _isScrolled ? _accentColor : Colors.transparent,
+        backgroundColor: _isScrolled
+            ? Theme.of(context).colorScheme.primaryContainer
+            : Colors.transparent,
         elevation: _isScrolled ? 4 : 0,
         foregroundColor: _isScrolled
-            ? Colors.white
+            ? Theme.of(context).colorScheme.onPrimaryContainer
             : Theme.of(context).colorScheme.onBackground,
       ),
       body: MediaQuery(
@@ -267,9 +333,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 16),
                     ListTile(
                       title: const Text('Follow System Dark Mode'),
+                      subtitle: const Text(
+                          'Make the app follow your system dark mode settings'),
                       trailing: Switch(
                         value: _themeMode == ThemeMode.system,
-                        activeColor: _accentColor,
                         onChanged: (value) {
                           setState(() {
                             _themeMode =
@@ -280,10 +347,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     ListTile(
-                      title: const Text('Dark Mode (Manual)'),
+                      title: const Text('Dark Mode'),
+                      subtitle: Text(_themeMode == ThemeMode.system
+                          ? 'Disabled when following system dark mode'
+                          : 'Manually control dark mode'),
                       trailing: Switch(
                         value: _themeMode == ThemeMode.dark,
-                        activeColor: _accentColor,
                         onChanged: _themeMode == ThemeMode.system
                             ? null
                             : (value) {
@@ -296,13 +365,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     ListTile(
-                      title: const Text('Accent Color'),
-                      trailing: ColorPickerButton(
-                        initialColor: _selectedAccentColor,
-                        onColorSelected: (color) {
-                          _saveAccentColor(color);
+                      title: Row(
+                        children: [
+                          const Text('Material You'),
+                          if (_useMaterialYou)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8.0),
+                              child: Icon(
+                                Icons.check_circle,
+                                color: Theme.of(context).colorScheme.primary,
+                                size: 16,
+                              ),
+                            ),
+                        ],
+                      ),
+                      subtitle: const Text(
+                          'Use system accent colors from your device theme'),
+                      trailing: Switch(
+                        value: _useMaterialYou,
+                        onChanged: (value) {
+                          setState(() {
+                            _useMaterialYou = value;
+                          });
+                          _settings.updateUseMaterialYou(value);
+                          if (widget.onMaterialYouChanged != null) {
+                            widget.onMaterialYouChanged!(value);
+                          }
                         },
                       ),
+                    ),
+                    ListTile(
+                      title: const Text('Accent Color'),
+                      subtitle: _useMaterialYou
+                          ? const Text('Disabled when Material You is enabled')
+                          : const Text('Choose an accent color'),
+                      trailing: _useMaterialYou
+                          ? Icon(Icons.color_lens,
+                              color: Theme.of(context).disabledColor)
+                          : ColorPickerButton(
+                              initialColor: _selectedAccentColor,
+                              onColorSelected: (color) {
+                                _saveAccentColor(color);
+                              },
+                            ),
+                      enabled: !_useMaterialYou,
                     ),
                     ListTile(
                       title: const Text('Book List Order'),
@@ -384,8 +490,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: const Text('Reading Progress'),
                       subtitle: LinearProgressIndicator(
                         value: _settings.readingProgress / 100,
-                        backgroundColor: _accentColor.withOpacity(0.1),
-                        valueColor: AlwaysStoppedAnimation<Color>(_accentColor),
+                        backgroundColor:
+                            Theme.of(context).colorScheme.surfaceVariant,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Theme.of(context).colorScheme.primary,
+                        ),
                       ),
                       trailing: Text(
                           '${_settings.readingProgress.toStringAsFixed(1)}%'),
@@ -548,23 +657,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Future<void> _saveAccentColor(Color color) async {
-    try {
-      await _settings.updateAccentColor(color);
-      if (mounted) {
-        setState(() {
-          _accentColor = color;
-          _selectedAccentColor = color;
-        });
-        widget.onAccentColorChanged(color);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving accent color: $e')),
-        );
-      }
-    }
+  void _saveAccentColor(Color color) {
+    setState(() {
+      _selectedAccentColor = color;
+    });
+    widget.onAccentColorChanged(color);
+    _settings.updateAccentColor(color);
   }
 
   Future<void> _sendTestNotification() async {
@@ -577,9 +675,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       // Show a snackbar to inform the user
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Test notification will appear in 5 seconds'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: const Text('Test notification will appear in 5 seconds'),
+          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
         ),
       );
 
@@ -588,7 +688,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error sending test notification: $e')),
+          SnackBar(
+            content: Text('Error sending test notification: $e'),
+            backgroundColor: Theme.of(context).colorScheme.errorContainer,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } finally {
@@ -619,7 +723,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           await _updateService.showUpdateDialog(context, release);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('You are using the latest version')),
+            SnackBar(
+              content: const Text('You are using the latest version'),
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
       }
@@ -629,7 +737,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _isCheckingUpdate = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error checking for updates: $e')),
+          SnackBar(
+            content: Text('Error checking for updates: $e'),
+            backgroundColor: Theme.of(context).colorScheme.errorContainer,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }

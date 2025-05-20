@@ -5,8 +5,11 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app_links/app_links.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
 import 'widgets/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/profile_screen.dart';
@@ -21,6 +24,9 @@ import 'screens/chat_room_screen.dart';
 import 'services/notification_service.dart';
 import 'services/update_service.dart';
 import 'widgets/side_menu.dart';
+
+// A key to access the same instance of MyApp when rebuilding
+final GlobalKey<_MyAppState> myAppKey = GlobalKey<_MyAppState>();
 
 // Handle background messages
 @pragma('vm:entry-point')
@@ -64,11 +70,19 @@ void main() async {
     print('Message data: ${message.data}');
   });
 
-  runApp(const MyApp());
+  runApp(MyApp(key: myAppKey));
 }
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  // Static method to restart the app
+  static void restartApp(BuildContext context) {
+    final _MyAppState? state = myAppKey.currentState;
+    if (state != null) {
+      state._restartApp();
+    }
+  }
 
   @override
   _MyAppState createState() => _MyAppState();
@@ -77,6 +91,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   ThemeMode _themeMode = ThemeMode.system;
   Color _accentColor = Colors.teal; // Default accent color
+  bool _useMaterialYou = false; // Default Material You setting
   late AppLinks _appLinks;
   StreamSubscription? _linkSubscription;
   Book? _sharedBook;
@@ -87,11 +102,13 @@ class _MyAppState extends State<MyApp> {
     owner: 'art-was-here', // Replace with your GitHub username
     repo: 'mybooknook', // Replace with your repo name
   );
+  // Add a key to force widget rebuilds
+  Key _appKey = UniqueKey();
 
   @override
   void initState() {
     super.initState();
-    _loadAccentColor();
+    _loadSettings();
     _initDeepLinkListener();
     _initializeNotifications();
     _setupFCM();
@@ -131,12 +148,41 @@ class _MyAppState extends State<MyApp> {
     super.dispose();
   }
 
+  Future<void> _loadSettings() async {
+    await _loadAccentColor();
+    await _loadMaterialYouSetting();
+    await _loadThemeMode();
+  }
+
+  Future<void> _loadThemeMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        final themeMode = prefs.getString('themeMode') ?? 'system';
+        _themeMode = ThemeMode.values.firstWhere(
+          (mode) => mode.toString() == 'ThemeMode.$themeMode',
+          orElse: () => ThemeMode.system,
+        );
+      });
+    }
+  }
+
   Future<void> _loadAccentColor() async {
     final prefs = await SharedPreferences.getInstance();
     if (mounted) {
       setState(() {
         final savedColor = prefs.getInt('accentColor');
         _accentColor = savedColor != null ? Color(savedColor) : Colors.teal;
+      });
+    }
+  }
+
+  Future<void> _loadMaterialYouSetting() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _useMaterialYou = prefs.getBool('use_material_you') ?? false;
+        print('Material You setting loaded: $_useMaterialYou');
       });
     }
   }
@@ -158,6 +204,34 @@ class _MyAppState extends State<MyApp> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('accentColor', color.value);
     }
+  }
+
+  void _onMaterialYouChanged(bool value) async {
+    if (mounted) {
+      // Save the Material You setting first
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('use_material_you', value);
+
+      // Then update the state
+      setState(() {
+        _useMaterialYou = value;
+      });
+
+      // Add debug print statements
+      print('Material You setting changed to: $value');
+
+      // Force a complete app restart
+      _restartApp();
+    }
+  }
+
+  void _restartApp() {
+    setState(() {
+      // Change the key to force a complete rebuild
+      _appKey = UniqueKey();
+    });
+
+    print('App restarted with new key: $_appKey');
   }
 
   Future<void> _initDeepLinkListener() async {
@@ -332,150 +406,377 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: _navigatorKey,
-      title: 'MyBookNook',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: _accentColor,
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        primarySwatch: Colors.blue,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: _accentColor,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
-      themeMode: _themeMode,
-      builder: (context, child) {
-        // Wrap the app with our side menu
-        return SideMenu(
-          navigatorKey: _navigatorKey,
-          child: child!,
-        );
-      },
-      initialRoute: '/',
-      onGenerateRoute: (settings) {
-        final routes = {
-          '/': (context) => StreamBuilder<User?>(
-              stream: FirebaseAuth.instance.authStateChanges(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Scaffold(
-                    body: Center(
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-                }
+    return KeyedSubtree(
+      key: _appKey,
+      child: DynamicColorBuilder(
+        builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+          // Print debug information
+          print('=== Material You Debug ===');
+          print('Material You enabled: $_useMaterialYou');
+          print(
+              'Light dynamic color scheme available: ${lightDynamic != null}');
+          print('Dark dynamic color scheme available: ${darkDynamic != null}');
 
-                if (snapshot.hasError) {
-                  return Scaffold(
-                    body: Center(
-                      child: Text('Error: ${snapshot.error}'),
-                    ),
-                  );
-                }
+          if (lightDynamic != null) {
+            print('Light dynamic primary: ${lightDynamic.primary}');
+            print('Light dynamic tertiary: ${lightDynamic.tertiary}');
+          }
 
-                if (!snapshot.hasData) {
-                  return const AuthScreen();
-                }
+          // Create seed-generated schemes based on accent color
+          final seedLightScheme = ColorScheme.fromSeed(
+            seedColor: _accentColor,
+            brightness: Brightness.light,
+          );
 
-                // User is authenticated, check if they have a document and setup is complete
-                return FutureBuilder<DocumentSnapshot>(
-                  future: FirebaseFirestore.instance
-                      .collection('users')
-                      .doc(snapshot.data!.uid)
-                      .get(),
-                  builder: (context, userSnapshot) {
-                    if (userSnapshot.connectionState ==
-                        ConnectionState.waiting) {
-                      return const Scaffold(
-                        body: Center(
-                          child: CircularProgressIndicator(),
-                        ),
-                      );
-                    }
+          final seedDarkScheme = ColorScheme.fromSeed(
+            seedColor: _accentColor,
+            brightness: Brightness.dark,
+          );
 
-                    if (userSnapshot.hasError) {
-                      return Scaffold(
-                        body: Center(
-                          child: Text('Error: ${userSnapshot.error}'),
-                        ),
-                      );
-                    }
+          // Decide which scheme to use based on Material You setting
+          final ColorScheme effectiveLightScheme =
+              _useMaterialYou && lightDynamic != null
+                  ? lightDynamic
+                  : seedLightScheme;
 
-                    // If user document doesn't exist or setup is not complete
-                    if (!userSnapshot.hasData ||
-                        !userSnapshot.data!.exists ||
-                        (userSnapshot.data!.data()
-                                as Map<String, dynamic>)['setupComplete'] !=
-                            true) {
-                      // Instead of signing out, navigate to username setup
-                      return const UsernameSetupScreen();
-                    }
+          final ColorScheme effectiveDarkScheme =
+              _useMaterialYou && darkDynamic != null
+                  ? darkDynamic
+                  : seedDarkScheme;
 
-                    // User is authenticated and has completed setup, show home screen
-                    return HomeScreen(
-                      onThemeChanged: _onThemeChanged,
-                      accentColor: _accentColor,
-                      onAccentColorChanged: _onAccentColorChanged,
-                    );
-                  },
-                );
-              }),
-          '/login': (context) => const AuthScreen(),
-          '/username-setup': (context) => const UsernameSetupScreen(),
-          '/settings': (context) => SettingsScreen(
-                onThemeChanged: _onThemeChanged,
-                onAccentColorChanged: _onAccentColorChanged,
-                onSortOrderChanged: (value) {
-                  // TODO: Implement sort order change
-                },
-                accentColor: _accentColor,
+          print(
+              'Effective light scheme primary: ${effectiveLightScheme.primary}');
+          print(
+              'Effective light scheme tertiary: ${effectiveLightScheme.tertiary}');
+          print(
+              'Effective dark scheme primary: ${effectiveDarkScheme.primary}');
+          print(
+              'Effective dark scheme tertiary: ${effectiveDarkScheme.tertiary}');
+          print('Using Material You: $_useMaterialYou');
+          print('=== End Material You Debug ===');
+
+          // Create slightly brighter surface colors for cards when Material You is enabled
+          final Color lightCardColor = _useMaterialYou
+              ? _brightenColor(effectiveLightScheme.surface, 0.03)
+              : effectiveLightScheme.surface;
+
+          final Color darkCardColor = _useMaterialYou
+              ? _brightenColor(effectiveDarkScheme.surface, 0.03)
+              : _brightenColor(effectiveDarkScheme.background, 0.03);
+
+          // Get the appropriate FAB colors
+          final Color lightFabColor = _useMaterialYou && lightDynamic != null
+              ? lightDynamic.tertiary
+              : effectiveLightScheme.primary;
+
+          final Color darkFabColor = _useMaterialYou && darkDynamic != null
+              ? darkDynamic.tertiary
+              : effectiveDarkScheme.primary;
+
+          print('=== FAB Color Debug ===');
+          print('Material You enabled: $_useMaterialYou');
+          print('Light dynamic available: ${lightDynamic != null}');
+          print('Dark dynamic available: ${darkDynamic != null}');
+          if (lightDynamic != null) {
+            print('Light dynamic tertiary: ${lightDynamic.tertiary}');
+            print('Light dynamic onTertiary: ${lightDynamic.onTertiary}');
+          }
+          print('Light FAB color: $lightFabColor');
+          print('Dark FAB color: $darkFabColor');
+          print('=== End FAB Color Debug ===');
+
+          return MaterialApp(
+            navigatorKey: _navigatorKey,
+            title: 'MyBookNook',
+            // Light theme with dynamic or seed colors
+            theme: ThemeData(
+              colorScheme: effectiveLightScheme,
+              useMaterial3: true,
+              // Make sure components explicitly use the color scheme
+              brightness: Brightness.light,
+              primaryColor: effectiveLightScheme.primary,
+              scaffoldBackgroundColor: effectiveLightScheme.background,
+              cardColor: lightCardColor,
+              cardTheme: CardTheme(
+                color: lightCardColor,
+                elevation: 2,
               ),
-          '/profile': (context) => const ProfileScreen(),
-          '/search': (context) => const SearchScreen(),
-          '/notifications': (context) => const NotificationsScreen(),
-          '/messages': (context) => const MessagesScreen(),
-        };
-
-        return PageRouteBuilder(
-          settings: settings,
-          pageBuilder: (context, animation, secondaryAnimation) {
-            // Get the route name from settings
-            final routeName = settings.name ?? '/';
-            // Get the route builder from the routes map
-            final routeBuilder = routes[routeName];
-            if (routeBuilder == null) {
-              return const Scaffold(
-                body: Center(
-                  child: Text('Route not found'),
+              appBarTheme: AppBarTheme(
+                backgroundColor: effectiveLightScheme.surface,
+                foregroundColor: effectiveLightScheme.onSurface,
+              ),
+              buttonTheme: ButtonThemeData(
+                colorScheme: effectiveLightScheme,
+                buttonColor: effectiveLightScheme.primary,
+              ),
+              textButtonTheme: TextButtonThemeData(
+                style: ButtonStyle(
+                  foregroundColor:
+                      MaterialStateProperty.all(effectiveLightScheme.primary),
                 ),
+              ),
+              elevatedButtonTheme: ElevatedButtonThemeData(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: effectiveLightScheme.primary,
+                  foregroundColor: effectiveLightScheme.onPrimary,
+                ),
+              ),
+              floatingActionButtonTheme: FloatingActionButtonThemeData(
+                backgroundColor: lightFabColor,
+                foregroundColor: _useMaterialYou && lightDynamic != null
+                    ? lightDynamic.onTertiary
+                    : effectiveLightScheme.onPrimary,
+              ),
+              snackBarTheme: SnackBarThemeData(
+                backgroundColor: _useMaterialYou && lightDynamic != null
+                    ? lightDynamic.tertiary
+                    : lightFabColor,
+                contentTextStyle: TextStyle(
+                  color: _useMaterialYou && lightDynamic != null
+                      ? lightDynamic.onTertiary
+                      : effectiveLightScheme.onPrimary,
+                ),
+              ),
+              switchTheme: SwitchThemeData(
+                thumbColor: MaterialStateProperty.resolveWith((states) {
+                  if (_useMaterialYou && lightDynamic != null) {
+                    return states.contains(MaterialState.selected)
+                        ? lightDynamic.tertiary
+                        : lightDynamic.outline;
+                  }
+                  return states.contains(MaterialState.selected)
+                      ? effectiveLightScheme.primary
+                      : effectiveLightScheme.outline;
+                }),
+                trackColor: MaterialStateProperty.resolveWith((states) {
+                  if (_useMaterialYou && lightDynamic != null) {
+                    return states.contains(MaterialState.selected)
+                        ? lightDynamic.tertiaryContainer
+                        : lightDynamic.surfaceVariant;
+                  }
+                  return states.contains(MaterialState.selected)
+                      ? effectiveLightScheme.primaryContainer
+                      : effectiveLightScheme.surfaceVariant;
+                }),
+              ),
+            ),
+            // Dark theme with dynamic or seed colors
+            darkTheme: ThemeData(
+              colorScheme: effectiveDarkScheme,
+              useMaterial3: true,
+              // Make sure components explicitly use the color scheme
+              brightness: Brightness.dark,
+              primaryColor: effectiveDarkScheme.primary,
+              scaffoldBackgroundColor: effectiveDarkScheme.background,
+              cardColor: darkCardColor,
+              cardTheme: CardTheme(
+                color: darkCardColor,
+                elevation: 2,
+              ),
+              appBarTheme: AppBarTheme(
+                backgroundColor: effectiveDarkScheme.surface,
+                foregroundColor: effectiveDarkScheme.onSurface,
+              ),
+              buttonTheme: ButtonThemeData(
+                colorScheme: effectiveDarkScheme,
+                buttonColor: effectiveDarkScheme.primary,
+              ),
+              textButtonTheme: TextButtonThemeData(
+                style: ButtonStyle(
+                  foregroundColor:
+                      MaterialStateProperty.all(effectiveDarkScheme.primary),
+                ),
+              ),
+              elevatedButtonTheme: ElevatedButtonThemeData(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: effectiveDarkScheme.primary,
+                  foregroundColor: effectiveDarkScheme.onPrimary,
+                ),
+              ),
+              floatingActionButtonTheme: FloatingActionButtonThemeData(
+                backgroundColor: darkFabColor,
+                foregroundColor: _useMaterialYou && darkDynamic != null
+                    ? darkDynamic.onTertiary
+                    : effectiveDarkScheme.onPrimary,
+              ),
+              snackBarTheme: SnackBarThemeData(
+                backgroundColor: _useMaterialYou && darkDynamic != null
+                    ? darkDynamic.tertiary
+                    : darkFabColor,
+                contentTextStyle: TextStyle(
+                  color: _useMaterialYou && darkDynamic != null
+                      ? darkDynamic.onTertiary
+                      : effectiveDarkScheme.onPrimary,
+                ),
+              ),
+              switchTheme: SwitchThemeData(
+                thumbColor: MaterialStateProperty.resolveWith((states) {
+                  if (_useMaterialYou && darkDynamic != null) {
+                    return states.contains(MaterialState.selected)
+                        ? darkDynamic.tertiary
+                        : darkDynamic.outline;
+                  }
+                  return states.contains(MaterialState.selected)
+                      ? effectiveDarkScheme.primary
+                      : effectiveDarkScheme.outline;
+                }),
+                trackColor: MaterialStateProperty.resolveWith((states) {
+                  if (_useMaterialYou && darkDynamic != null) {
+                    return states.contains(MaterialState.selected)
+                        ? darkDynamic.tertiaryContainer
+                        : darkDynamic.surfaceVariant;
+                  }
+                  return states.contains(MaterialState.selected)
+                      ? effectiveDarkScheme.primaryContainer
+                      : effectiveDarkScheme.surfaceVariant;
+                }),
+              ),
+            ),
+            themeMode: _themeMode,
+            builder: (context, child) {
+              // Wrap the app with our side menu
+              return SideMenu(
+                navigatorKey: _navigatorKey,
+                child: child!,
               );
-            }
-            return routeBuilder(context);
-          },
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            const begin = Offset(1.0, 0.0);
-            const end = Offset.zero;
-            const curve = Curves.easeInOut;
-            var tween =
-                Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-            var offsetAnimation = animation.drive(tween);
-            return SlideTransition(
-              position: offsetAnimation,
-              child: child,
-            );
-          },
-          transitionDuration: const Duration(milliseconds: 300),
-        );
-      },
+            },
+            initialRoute: '/',
+            onGenerateRoute: (settings) {
+              final routes = {
+                '/': (context) => StreamBuilder<User?>(
+                    stream: FirebaseAuth.instance.authStateChanges(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Scaffold(
+                          body: Center(
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
+
+                      if (snapshot.hasError) {
+                        return Scaffold(
+                          body: Center(
+                            child: Text('Error: ${snapshot.error}'),
+                          ),
+                        );
+                      }
+
+                      if (!snapshot.hasData) {
+                        return const AuthScreen();
+                      }
+
+                      // User is authenticated, check if they have a document and setup is complete
+                      return FutureBuilder<DocumentSnapshot>(
+                        future: FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(snapshot.data!.uid)
+                            .get(),
+                        builder: (context, userSnapshot) {
+                          if (userSnapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Scaffold(
+                              body: Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          }
+
+                          if (userSnapshot.hasError) {
+                            return Scaffold(
+                              body: Center(
+                                child: Text('Error: ${userSnapshot.error}'),
+                              ),
+                            );
+                          }
+
+                          // If user document doesn't exist or setup is not complete
+                          if (!userSnapshot.hasData ||
+                              !userSnapshot.data!.exists ||
+                              (userSnapshot.data!.data() as Map<String,
+                                      dynamic>)['setupComplete'] !=
+                                  true) {
+                            // Instead of signing out, navigate to username setup
+                            return const UsernameSetupScreen();
+                          }
+
+                          // User is authenticated and has completed setup, show home screen
+                          return HomeScreen(
+                            onThemeChanged: _onThemeChanged,
+                            accentColor: _accentColor,
+                            onAccentColorChanged: _onAccentColorChanged,
+                            onMaterialYouChanged: _onMaterialYouChanged,
+                          );
+                        },
+                      );
+                    }),
+                '/login': (context) => const AuthScreen(),
+                '/username-setup': (context) => const UsernameSetupScreen(),
+                '/settings': (context) => SettingsScreen(
+                      onThemeChanged: _onThemeChanged,
+                      onAccentColorChanged: _onAccentColorChanged,
+                      onMaterialYouChanged: _onMaterialYouChanged,
+                      onSortOrderChanged: (value) {
+                        // TODO: Implement sort order change
+                      },
+                      accentColor: _accentColor,
+                    ),
+                '/profile': (context) => const ProfileScreen(),
+                '/search': (context) => const SearchScreen(),
+                '/notifications': (context) => const NotificationsScreen(),
+                '/messages': (context) => const MessagesScreen(),
+              };
+
+              return PageRouteBuilder(
+                settings: settings,
+                pageBuilder: (context, animation, secondaryAnimation) {
+                  // Get the route name from settings
+                  final routeName = settings.name ?? '/';
+                  // Get the route builder from the routes map
+                  final routeBuilder = routes[routeName];
+                  if (routeBuilder == null) {
+                    return const Scaffold(
+                      body: Center(
+                        child: Text('Route not found'),
+                      ),
+                    );
+                  }
+                  return routeBuilder(context);
+                },
+                transitionsBuilder:
+                    (context, animation, secondaryAnimation, child) {
+                  const begin = Offset(1.0, 0.0);
+                  const end = Offset.zero;
+                  const curve = Curves.easeInOut;
+                  var tween = Tween(begin: begin, end: end)
+                      .chain(CurveTween(curve: curve));
+                  var offsetAnimation = animation.drive(tween);
+                  return SlideTransition(
+                    position: offsetAnimation,
+                    child: child,
+                  );
+                },
+                transitionDuration: const Duration(milliseconds: 300),
+              );
+            },
+          );
+        },
+      ),
     );
+  }
+
+  // Helper method to brighten a color by a percentage
+  Color _brightenColor(Color color, double amount) {
+    assert(amount >= 0 && amount <= 1);
+
+    // Convert to HSL
+    final hsl = HSLColor.fromColor(color);
+
+    // Increase lightness by the specified amount
+    final newLightness = (hsl.lightness + amount).clamp(0.0, 1.0);
+
+    // Create new color with increased lightness
+    return hsl.withLightness(newLightness).toColor();
   }
 }
 

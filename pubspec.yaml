@@ -39,6 +39,7 @@ dependencies:
   path_provider: ^2.1.1
   dio: ^5.4.0
   open_file: ^3.3.2
+  dynamic_color: ^1.7.0
 
 flutter_launcher_icons:
   android: true

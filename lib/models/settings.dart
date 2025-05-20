@@ -13,6 +13,7 @@ class Settings {
   static const String _themeModeKey = 'theme_mode';
   static const String _accentColorKey = 'accent_color';
   static const String _sortOrderKey = 'sort_order';
+  static const String _useMaterialYouKey = 'use_material_you';
 
   double _fontSize = 1.0;
   String _listDensity = 'comfortable';
@@ -23,6 +24,7 @@ class Settings {
   ThemeMode _themeMode = ThemeMode.system;
   Color _accentColor = Colors.teal;
   String _sortOrder = 'title';
+  bool _useMaterialYou = false;
 
   // Getters
   double get fontSize => _fontSize;
@@ -34,6 +36,7 @@ class Settings {
   ThemeMode get themeMode => _themeMode;
   Color get accentColor => _accentColor;
   String get sortOrder => _sortOrder;
+  bool get useMaterialYou => _useMaterialYou;
   double get readingProgress =>
       _totalBooks > 0 ? (_readBooks / _totalBooks) * 100 : 0;
 
@@ -59,6 +62,7 @@ class Settings {
     );
     _accentColor = Color(prefs.getInt(_accentColorKey) ?? Colors.teal.value);
     _sortOrder = prefs.getString(_sortOrderKey) ?? 'title';
+    _useMaterialYou = prefs.getBool(_useMaterialYouKey) ?? false;
   }
 
   // Save settings to SharedPreferences
@@ -80,6 +84,7 @@ class Settings {
     await prefs.setString(_themeModeKey, _themeMode.toString().split('.').last);
     await prefs.setInt(_accentColorKey, _accentColor.value);
     await prefs.setString(_sortOrderKey, _sortOrder);
+    await prefs.setBool(_useMaterialYouKey, _useMaterialYou);
   }
 
   Future<void> initialize() async {
@@ -130,6 +135,11 @@ class Settings {
           _sortOrder = data['sortOrder'] as String;
           needsUpdate = true;
         }
+        if (data.containsKey('useMaterialYou') &&
+            data['useMaterialYou'] != _useMaterialYou) {
+          _useMaterialYou = data['useMaterialYou'] as bool;
+          needsUpdate = true;
+        }
 
         // Save to local storage if updates were needed
         if (needsUpdate) {
@@ -157,6 +167,7 @@ class Settings {
         'themeMode': _themeMode.toString().split('.').last,
         'accentColor': _accentColor.value,
         'sortOrder': _sortOrder,
+        'useMaterialYou': _useMaterialYou,
         'lastUpdated': DateTime.now().toIso8601String(),
       });
     } catch (e) {
@@ -213,6 +224,12 @@ class Settings {
 
   Future<void> updateAccentColor(Color color) async {
     _accentColor = color;
+    await save();
+    await saveToFirebase();
+  }
+
+  Future<void> updateUseMaterialYou(bool use) async {
+    _useMaterialYou = use;
     await save();
     await saveToFirebase();
   }
