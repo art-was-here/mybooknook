@@ -6,7 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/settings.dart' as app_settings;
 import 'dart:convert';
-import 'select_list.dart' show SelectListDialog;
+import 'select_list_bottom_sheet.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'author_details_card.dart';
@@ -770,8 +770,18 @@ class _ScanBookDetailsCardState extends State<ScanBookDetailsCard> {
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () async {
-                          final selectedList =
-                              await SelectListDialog.show(context, widget.book);
+                          final selectedList = await SelectListBottomSheet.show(
+                            context,
+                            widget.book,
+                            onListCreated: () {
+                              // Force a refresh by using the callback
+                              final prefs = SharedPreferences.getInstance();
+                              prefs.then((p) {
+                                p.remove('list_names_cache');
+                                p.remove('list_names_timestamp');
+                              });
+                            },
+                          );
                           if (selectedList != null) {
                             setState(() {
                               _selectedListId = selectedList['id'];

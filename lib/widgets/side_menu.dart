@@ -245,6 +245,38 @@ class SideMenuState extends State<SideMenu> {
                       leading: Icon(Icons.notifications,
                           color: Theme.of(context).colorScheme.primary),
                       title: const Text('Notifications'),
+                      trailing: StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseAuth.instance.currentUser != null
+                            ? FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(FirebaseAuth.instance.currentUser!.uid)
+                                .collection('notifications')
+                                .where('isRead', isEqualTo: false)
+                                .snapshots()
+                            : Stream.empty(),
+                        builder: (context, snapshot) {
+                          final unreadCount = snapshot.data?.docs.length ?? 0;
+                          if (unreadCount == 0) {
+                            return const SizedBox.shrink();
+                          }
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              unreadCount.toString(),
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onPrimary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                       onTap: () => _navigateToRoute('/notifications'),
                     ),
                     ListTile(

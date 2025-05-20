@@ -27,6 +27,7 @@ import 'home_screen/list_manager.dart';
 import 'home_screen/book_with_list.dart';
 import '../screens/settings_screen.dart';
 import '../screens/search_screen.dart';
+import 'select_list_bottom_sheet.dart';
 import 'package:http/http.dart' as http;
 
 class HomeScreen extends StatefulWidget {
@@ -777,137 +778,42 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (user == null) return;
 
     try {
-      final listsSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('lists')
-          .where('name', isNotEqualTo: 'Library') // Filter out Library list
-          .get();
-
-      final lists = listsSnapshot.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          'name': data['name'] as String? ?? 'Unknown List',
-        };
-      }).toList();
-
-      if (lists.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(_buildContext).showSnackBar(
-          const SnackBar(
-            content: Text('Please create a list first before adding books'),
-          ),
-        );
-        return;
-      }
-
-      if (!mounted) return;
-
-      final selectedList = await showDialog<Map<String, String>>(
-        context: context,
-        builder: (BuildContext dialogContext) => AlertDialog(
-          title: const Text('Add to List'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: lists.length,
-              itemBuilder: (context, index) {
-                final list = lists[index];
-                return ListTile(
-                  title: Text(list['name']!),
-                  onTap: () => Navigator.pop(dialogContext, list),
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-          ],
-        ),
+      // Instead of creating a custom dialog, use our bottom sheet
+      final selectedList = await SelectListBottomSheet.show(
+        context,
+        book,
+        onListCreated: () {
+          // Clear list cache and reload books
+          _clearListNamesCache();
+          _loadBooks();
+        },
       );
 
+      // Selection and book saving is handled by the bottom sheet
       if (selectedList != null) {
-        try {
-          // Add the book to Firestore
-          final bookRef = FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .collection('lists')
-              .doc(selectedList['id'])
-              .collection('books')
-              .doc(); // Let Firestore generate a unique ID
-
-          await bookRef.set({
-            'title': book.title,
-            'authors': book.authors,
-            'description': book.description,
-            'imageUrl': book.imageUrl,
-            'isbn': book.isbn,
-            'publishedDate': book.publishedDate,
-            'publisher': book.publisher,
-            'pageCount': book.pageCount,
-            'categories': book.categories,
-            'tags': book.tags,
-            'userId': user.uid,
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-
-          // Update the list names cache
-          _listNamesCache[selectedList['id']!] = selectedList['name']!;
-          _listNamesLastUpdated = DateTime.now();
-
-          if (!mounted) return;
-          ScaffoldMessenger.of(_buildContext).showSnackBar(
-            SnackBar(content: Text('Added to ${selectedList['name']}')),
+        // The book is already added to the list by the bottom sheet
+        // Update UI if needed based on result
+        if (_selectedListName == 'Library' ||
+            _selectedListId == selectedList['id']) {
+          // Create a new BookWithList object for the added book
+          final newBookWithList = BookWithList(
+            book: book,
+            listId: selectedList['id']!,
+            listName: selectedList['name']!,
           );
 
-          // Update the UI
-          if (mounted) {
-            // If we're in Library view or the list we just added to, update the UI
-            if (_selectedListName == 'Library' ||
-                _selectedListId == selectedList['id']) {
-              // Create a new BookWithList object for the added book
-              final newBookWithList = BookWithList(
-                book: book,
-                listId: selectedList['id']!,
-                listName: selectedList['name']!,
-              );
-
-              // Update the state
-              setState(() {
-                // Clear the current books list
-                _loadedBooks.clear();
-
-                // Add the new book
-                _loadedBooks.add(newBookWithList);
-
-                // If we're in Library view, we need to reload all books
-                if (_selectedListName == 'Library') {
-                  _loadBooks();
-                } else {
-                  // For a specific list, just sort the current books
-                  _sortBooks();
-                }
-              });
-            }
-          }
-        } catch (e) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(
-            _buildContext,
-          ).showSnackBar(SnackBar(content: Text('Error adding book: $e')));
+          // Update the state
+          setState(() {
+            _loadedBooks.add(newBookWithList);
+            _sortBooks();
+          });
         }
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         _buildContext,
-      ).showSnackBar(SnackBar(content: Text('Error loading lists: $e')));
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -1007,46 +913,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           actions: [
                             Padding(
                               padding: const EdgeInsets.only(right: 15.0),
-                              child: _isProfileImageLoading
-                                  ? const CircleAvatar(
-                                      radius: 18,
-                                      child: CircularProgressIndicator(),
-                                    )
-                                  : Stack(
-                                      children: [
-                                        CircleAvatar(
-                                          radius: 18,
-                                          backgroundImage:
-                                              _cachedProfileImage != null
-                                                  ? MemoryImage(base64Decode(
-                                                      _cachedProfileImage!))
-                                                  : null,
-                                          child: _cachedProfileImage == null
-                                              ? const Icon(Icons.person)
-                                              : null,
-                                        ),
-                                        if (_hasUnreadNotifications)
-                                          Positioned(
-                                            right: 0,
-                                            bottom: 0,
-                                            child: Container(
-                                              width: 12,
-                                              height: 12,
-                                              decoration: BoxDecoration(
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .error,
-                                                shape: BoxShape.circle,
-                                                border: Border.all(
-                                                  color: Theme.of(context)
-                                                      .scaffoldBackgroundColor,
-                                                  width: 2,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
+                              child: GestureDetector(
+                                onTap: () => _navigateToRoute('/profile'),
+                                child: _isProfileImageLoading
+                                    ? const CircleAvatar(
+                                        radius: 18,
+                                        child: CircularProgressIndicator(),
+                                      )
+                                    : CircleAvatar(
+                                        radius: 18,
+                                        backgroundImage:
+                                            _cachedProfileImage != null
+                                                ? MemoryImage(base64Decode(
+                                                    _cachedProfileImage!))
+                                                : null,
+                                        child: _cachedProfileImage == null
+                                            ? const Icon(Icons.person)
+                                            : null,
+                                      ),
+                              ),
                             ),
                           ],
                         ),
