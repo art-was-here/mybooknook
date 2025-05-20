@@ -11,6 +11,8 @@ class ListItem extends StatefulWidget {
   final Color accentColor;
   final Function(String) onToggleExpanded;
   final Function(BuildContext, Book) onBookTap;
+  final bool useMaterialYou;
+  final Color subCardColor;
 
   const ListItem({
     super.key,
@@ -22,6 +24,8 @@ class ListItem extends StatefulWidget {
     required this.accentColor,
     required this.onToggleExpanded,
     required this.onBookTap,
+    required this.subCardColor,
+    this.useMaterialYou = false,
   });
 
   @override
@@ -31,6 +35,16 @@ class ListItem extends StatefulWidget {
 class _ListItemState extends State<ListItem> {
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    // Use the exact same calculation as in main.dart for FAB color
+    final cardColor = widget.useMaterialYou
+        ? _darkenColor(colorScheme.tertiary, 0.50)
+        : ColorScheme.fromSeed(
+            seedColor: widget.accentColor,
+            brightness: Theme.of(context).brightness,
+          ).primary; // Use the same calculation as FAB color in main.dart
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -39,13 +53,17 @@ class _ListItemState extends State<ListItem> {
           child: Card(
             elevation: 2,
             margin: EdgeInsets.zero,
+            color: cardColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Header section with book covers, list name, count, and expand arrow
                 InkWell(
                   onTap: () => widget.onToggleExpanded(widget.listName),
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: BorderRadius.circular(12),
                   child: Padding(
                     padding: const EdgeInsets.all(12.0),
                     child: Row(
@@ -63,9 +81,7 @@ class _ListItemState extends State<ListItem> {
                                 style: Theme.of(context)
                                     .textTheme
                                     .titleMedium
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                    ?.copyWith(fontWeight: FontWeight.bold),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -98,7 +114,9 @@ class _ListItemState extends State<ListItem> {
                             dense: true,
                             minVerticalPadding: 0,
                             contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16.0, vertical: 0.0),
+                              horizontal: 16.0,
+                              vertical: 0.0,
+                            ),
                             leading: book.imageUrl != null
                                 ? Container(
                                     width: 50,
@@ -112,10 +130,15 @@ class _ListItemState extends State<ListItem> {
                                       width: 50,
                                       height: 75,
                                       fit: BoxFit.cover,
-                                      errorBuilder: (BuildContext imageContext,
-                                              Object error,
-                                              StackTrace? stackTrace) =>
-                                          const Icon(Icons.book, size: 50),
+                                      errorBuilder: (
+                                        BuildContext imageContext,
+                                        Object error,
+                                        StackTrace? stackTrace,
+                                      ) =>
+                                          const Icon(
+                                        Icons.book,
+                                        size: 50,
+                                      ),
                                     ),
                                   )
                                 : Container(
@@ -145,6 +168,24 @@ class _ListItemState extends State<ListItem> {
         ),
         const SizedBox(height: 10),
       ],
+    );
+  }
+
+  Color _darkenColor(Color color, double factor) {
+    return Color.fromARGB(
+      color.alpha,
+      (color.red * (1 - factor)).clamp(0, 255).toInt(),
+      (color.green * (1 - factor)).clamp(0, 255).toInt(),
+      (color.blue * (1 - factor)).clamp(0, 255).toInt(),
+    );
+  }
+
+  Color _brightenColor(Color color, double factor) {
+    return Color.fromARGB(
+      color.alpha,
+      (color.red * (1 + factor)).clamp(0, 255).toInt(),
+      (color.green * (1 + factor)).clamp(0, 255).toInt(),
+      (color.blue * (1 + factor)).clamp(0, 255).toInt(),
     );
   }
 

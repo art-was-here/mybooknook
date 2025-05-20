@@ -346,15 +346,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     try {
       final now = DateTime.now();
-      await _database!.insert(
-          'lists',
-          {
-            'id': listId,
-            'name': listName,
-            'createdAt': now.toIso8601String(),
-            'lastUpdated': now.toIso8601String(),
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace);
+      await _database!.insert('lists', {
+        'id': listId,
+        'name': listName,
+        'createdAt': now.toIso8601String(),
+        'lastUpdated': now.toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     } catch (e) {
       print('Error caching list: $e');
     }
@@ -413,11 +410,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (user == null) return;
     print('Starting book migration for user: ${user.uid}');
     try {
-      final listsSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('lists')
-          .get();
+      final listsSnapshot =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .collection('lists')
+              .get();
 
       for (var listDoc in listsSnapshot.docs) {
         final booksSnapshot = await listDoc.reference.collection('books').get();
@@ -434,9 +432,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             needsUpdate = true;
           }
           if (data['tags'] == null) {
-            updates['tags'] = data['categories'] != null
-                ? List<String>.from(data['categories'])
-                : [];
+            updates['tags'] =
+                data['categories'] != null
+                    ? List<String>.from(data['categories'])
+                    : [];
             needsUpdate = true;
           }
 
@@ -537,12 +536,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }, SetOptions(merge: true));
 
       // First, clean up any duplicate Home lists
-      final homeLists = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('lists')
-          .where('name', isEqualTo: 'Home')
-          .get();
+      final homeLists =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .collection('lists')
+              .where('name', isEqualTo: 'Home')
+              .get();
 
       if (homeLists.docs.isNotEmpty) {
         print('Found ${homeLists.docs.length} Home lists to clean up');
@@ -553,13 +553,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           final books = await homeList.reference.collection('books').get();
           for (var book in books.docs) {
             // Move book to Library list
-            final libraryList = await FirebaseFirestore.instance
-                .collection('users')
-                .doc(user.uid)
-                .collection('lists')
-                .where('name', isEqualTo: 'Library')
-                .limit(1)
-                .get();
+            final libraryList =
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user.uid)
+                    .collection('lists')
+                    .where('name', isEqualTo: 'Library')
+                    .limit(1)
+                    .get();
 
             if (libraryList.docs.isNotEmpty) {
               await libraryList.docs.first.reference
@@ -575,13 +576,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
 
       print('Checking for Library list');
-      final snapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('lists')
-          .where('name', isEqualTo: 'Library')
-          .limit(1)
-          .get();
+      final snapshot =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .collection('lists')
+              .where('name', isEqualTo: 'Library')
+              .limit(1)
+              .get();
 
       if (snapshot.docs.isEmpty) {
         print('Creating new Library list');
@@ -589,8 +591,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             .collection('users')
             .doc(user.uid)
             .collection('lists')
-            .add(
-                {'name': 'Library', 'createdAt': FieldValue.serverTimestamp()});
+            .add({
+              'name': 'Library',
+              'createdAt': FieldValue.serverTimestamp(),
+            });
         print('Created Library list with ID: ${listRef.id}');
         if (mounted) {
           setState(() {
@@ -622,34 +626,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final TextEditingController controller = TextEditingController();
     final result = await showDialog<String>(
       context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('New List'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(hintText: 'Enter list name'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+      builder:
+          (BuildContext dialogContext) => AlertDialog(
+            title: const Text('New List'),
+            content: TextField(
+              controller: controller,
+              decoration: const InputDecoration(hintText: 'Enter list name'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, controller.text),
+                child: const Text('Create'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: const Text('Create'),
-          ),
-        ],
-      ),
     );
 
     if (result != null && result.isNotEmpty) {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         try {
-          final listRef = FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .collection('lists')
-              .doc();
+          final listRef =
+              FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .collection('lists')
+                  .doc();
 
           await listRef.set({
             'name': result,
@@ -686,22 +692,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _deleteList(BuildContext context, String listId) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('Delete List'),
-        content: const Text(
-          'Are you sure you want to delete this list and all its books?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+      builder:
+          (BuildContext dialogContext) => AlertDialog(
+            title: const Text('Delete List'),
+            content: const Text(
+              'Are you sure you want to delete this list and all its books?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Delete'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
     );
 
     if (confirmed == true) {
@@ -709,13 +716,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (user != null) {
         try {
           // First, get all books in the list
-          final booksSnapshot = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .collection('lists')
-              .doc(listId)
-              .collection('books')
-              .get();
+          final booksSnapshot =
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .collection('lists')
+                  .doc(listId)
+                  .collection('books')
+                  .get();
 
           // Create a batch operation
           final batch = FirebaseFirestore.instance.batch();
@@ -835,17 +843,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             !_isExpandedStatesLoaded ||
             _isLoading) {
           return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
+            body: Center(child: CircularProgressIndicator()),
           );
         }
 
         final user = FirebaseAuth.instance.currentUser;
         print(
-            'Building HomeScreen for user: ${user?.email ?? "No user"}, UID: ${user?.uid ?? "No UID"}');
+          'Building HomeScreen for user: ${user?.email ?? "No user"}, UID: ${user?.uid ?? "No UID"}',
+        );
         print(
-            'Selected List: $_selectedListName, ID: $_selectedListId, Sort: $_sortPreference');
+          'Selected List: $_selectedListName, ID: $_selectedListId, Sort: $_sortPreference',
+        );
         print('Menu state: isOpen=$_isMenuOpen, dragX=$_currentDragX');
 
         // Cache the book list if it's not already cached
@@ -873,29 +881,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 await _addNewList(context);
                               }
                             },
-                            itemBuilder: (BuildContext popupContext) => [
-                              PopupMenuItem<String>(
-                                value: 'add_list',
-                                child: Row(
-                                  children: const [
-                                    Icon(Icons.add),
-                                    SizedBox(width: 8),
-                                    Text('Add New List'),
-                                  ],
-                                ),
-                              ),
-                              PopupMenuItem<String>(
-                                enabled: false,
-                                height: 0,
-                                padding: EdgeInsets.zero,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10),
-                                  child: Divider(height: 1),
-                                ),
-                              ),
-                              ..._buildListMenuItems(context),
-                            ],
+                            itemBuilder:
+                                (BuildContext popupContext) => [
+                                  PopupMenuItem<String>(
+                                    value: 'add_list',
+                                    child: Row(
+                                      children: const [
+                                        Icon(Icons.add),
+                                        SizedBox(width: 8),
+                                        Text('Add New List'),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem<String>(
+                                    enabled: false,
+                                    height: 0,
+                                    padding: EdgeInsets.zero,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                      ),
+                                      child: Divider(height: 1),
+                                    ),
+                                  ),
+                                  ..._buildListMenuItems(context),
+                                ],
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -917,53 +927,61 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               padding: const EdgeInsets.only(right: 15.0),
                               child: GestureDetector(
                                 onTap: () => _navigateToRoute('/profile'),
-                                child: _isProfileImageLoading
-                                    ? const CircleAvatar(
-                                        radius: 18,
-                                        child: CircularProgressIndicator(),
-                                      )
-                                    : CircleAvatar(
-                                        radius: 18,
-                                        backgroundImage:
-                                            _cachedProfileImage != null
-                                                ? MemoryImage(base64Decode(
-                                                    _cachedProfileImage!))
-                                                : null,
-                                        child: _cachedProfileImage == null
-                                            ? const Icon(Icons.person)
-                                            : null,
-                                      ),
+                                child:
+                                    _isProfileImageLoading
+                                        ? const CircleAvatar(
+                                          radius: 18,
+                                          child: CircularProgressIndicator(),
+                                        )
+                                        : CircleAvatar(
+                                          radius: 18,
+                                          backgroundImage:
+                                              _cachedProfileImage != null
+                                                  ? MemoryImage(
+                                                    base64Decode(
+                                                      _cachedProfileImage!,
+                                                    ),
+                                                  )
+                                                  : null,
+                                          child:
+                                              _cachedProfileImage == null
+                                                  ? const Icon(Icons.person)
+                                                  : null,
+                                        ),
                               ),
                             ),
                           ],
                         ),
                         Expanded(
-                          child: _isLoading
-                              ? const Center(child: CircularProgressIndicator())
-                              : _errorMessage != null
+                          child:
+                              _isLoading
+                                  ? const Center(
+                                    child: CircularProgressIndicator(),
+                                  )
+                                  : _errorMessage != null
                                   ? Center(
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Text(_errorMessage!),
-                                          const SizedBox(height: 16),
-                                          ElevatedButton(
-                                            onPressed: () {
-                                              if (mounted) {
-                                                _initializeDefaultList();
-                                              }
-                                            },
-                                            child: const Text('Retry'),
-                                          ),
-                                        ],
-                                      ),
-                                    )
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(_errorMessage!),
+                                        const SizedBox(height: 16),
+                                        ElevatedButton(
+                                          onPressed: () {
+                                            if (mounted) {
+                                              _initializeDefaultList();
+                                            }
+                                          },
+                                          child: const Text('Retry'),
+                                        ),
+                                      ],
+                                    ),
+                                  )
                                   : _selectedListName == 'Library' &&
-                                          _loadedBooks.isEmpty &&
-                                          _cachedBookList == null
-                                      ? _buildBookList()
-                                      : _cachedBookList ?? _buildBookList(),
+                                      _loadedBooks.isEmpty &&
+                                      _cachedBookList == null
+                                  ? _buildBookList()
+                                  : _cachedBookList ?? _buildBookList(),
                         ),
                         // Add bottom padding
                         SizedBox(height: 20),
@@ -979,8 +997,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 showModalBottomSheet(
                   context: context,
                   shape: const RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.vertical(top: Radius.circular(20)),
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(20),
+                    ),
                   ),
                   builder: (BuildContext context) {
                     return Container(
@@ -1006,15 +1025,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               scanTextFromImage();
                             },
                           ),
-                          _buildOptionButton(
-                            context,
-                            Icons.link,
-                            'Link',
-                            () {
-                              Navigator.pop(context);
-                              _showLinkInputDialog();
-                            },
-                          ),
+                          _buildOptionButton(context, Icons.link, 'Link', () {
+                            Navigator.pop(context);
+                            _showLinkInputDialog();
+                          }),
                         ],
                       ),
                     );
@@ -1046,11 +1060,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              color: Theme.of(context).colorScheme.primary,
-              size: 32,
-            ),
+            Icon(icon, color: Theme.of(context).colorScheme.primary, size: 32),
             const SizedBox(height: 8),
             Text(
               label,
@@ -1081,11 +1091,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              color: Theme.of(context).colorScheme.primary,
-              size: 20,
-            ),
+            Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
             const SizedBox(height: 2),
             Text(
               label,
@@ -1112,11 +1118,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     print('Fetching list names for user: $userId');
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .collection('lists')
-          .get();
+      final snapshot =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(userId)
+              .collection('lists')
+              .get();
       print('List names query completed: ${snapshot.docs.length} lists found');
       _listNamesCache.clear();
       for (var doc in snapshot.docs) {
@@ -1311,16 +1318,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
       PopupMenuItem<String>(
         child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseAuth.instance.currentUser != null
-              ? FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(FirebaseAuth.instance.currentUser!.uid)
-                  .collection('lists')
-                  .where('name', isNotEqualTo: 'Library')
-                  .orderBy('name')
-                  .orderBy('createdAt')
-                  .snapshots()
-              : Stream.empty(),
+          stream:
+              FirebaseAuth.instance.currentUser != null
+                  ? FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(FirebaseAuth.instance.currentUser!.uid)
+                      .collection('lists')
+                      .where('name', isNotEqualTo: 'Library')
+                      .orderBy('name')
+                      .orderBy('createdAt')
+                      .snapshots()
+                  : Stream.empty(),
           builder: (
             BuildContext streamContext,
             AsyncSnapshot<QuerySnapshot> snapshot,
@@ -1338,32 +1346,33 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             }
 
             return Column(
-              children: snapshot.data!.docs.map((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                final listId = doc.id;
-                final listName = data['name'] as String? ?? 'Unknown List';
-                return PopupMenuItem<String>(
-                  value: listId,
-                  onTap: () async {
-                    if (mounted) {
-                      setState(() {
-                        _selectedListId = listId;
-                        _selectedListName = listName;
-                      });
-                      await _loadBooks();
-                    }
-                  },
-                  child: ListTile(
-                    title: Text(listName),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () {
-                        _deleteList(_buildContext, listId);
+              children:
+                  snapshot.data!.docs.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final listId = doc.id;
+                    final listName = data['name'] as String? ?? 'Unknown List';
+                    return PopupMenuItem<String>(
+                      value: listId,
+                      onTap: () async {
+                        if (mounted) {
+                          setState(() {
+                            _selectedListId = listId;
+                            _selectedListName = listName;
+                          });
+                          await _loadBooks();
+                        }
                       },
-                    ),
-                  ),
-                );
-              }).toList(),
+                      child: ListTile(
+                        title: Text(listName),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () {
+                            _deleteList(_buildContext, listId);
+                          },
+                        ),
+                      ),
+                    );
+                  }).toList(),
             );
           },
         ),
@@ -1411,36 +1420,39 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // Find the book in _loadedBooks to get its actual list ID
     final bookWithList = _loadedBooks.firstWhere(
       (b) => b.book.isbn == book.isbn,
-      orElse: () => BookWithList(
-        book: book,
-        listId: _selectedListId ?? '',
-        listName: _selectedListName,
-      ),
+      orElse:
+          () => BookWithList(
+            book: book,
+            listId: _selectedListId ?? '',
+            listName: _selectedListName,
+          ),
     );
 
     showModalBottomSheet<Widget>(
       context: _buildContext,
       isScrollControlled: true,
-      builder: (BuildContext modalContext) => isScanned
-          ? ScanBookDetailsCard(
-              book: book,
-              bookService: BookService(modalContext),
-              lists: {_selectedListId ?? '': _selectedListName ?? ''},
-              onClose: () {
-                if (mounted) {
-                  setState(() {
-                    _isLoading = false;
-                  });
-                }
-              },
-            )
-          : BookDetailsCard(
-              book: book,
-              bookService: BookService(modalContext),
-              listId: _selectedListId,
-              listName: _selectedListName,
-              actualListId: bookWithList.listId,
-            ),
+      builder:
+          (BuildContext modalContext) =>
+              isScanned
+                  ? ScanBookDetailsCard(
+                    book: book,
+                    bookService: BookService(modalContext),
+                    lists: {_selectedListId ?? '': _selectedListName ?? ''},
+                    onClose: () {
+                      if (mounted) {
+                        setState(() {
+                          _isLoading = false;
+                        });
+                      }
+                    },
+                  )
+                  : BookDetailsCard(
+                    book: book,
+                    bookService: BookService(modalContext),
+                    listId: _selectedListId,
+                    listName: _selectedListName,
+                    actualListId: bookWithList.listId,
+                  ),
     ).whenComplete(() {
       if (mounted) {
         setState(() {
@@ -1494,10 +1506,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     print('No cached profile image found, checking Firebase');
     // If no cached image, check Firebase
     try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
+      final userDoc =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
 
       if (userDoc.exists) {
         final data = userDoc.data() as Map<String, dynamic>;
@@ -1563,26 +1576,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _showLogoutDialog() {
     showDialog(
       context: _buildContext,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Logout'),
+            content: const Text('Are you sure you want to logout?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  await FirebaseAuth.instance.signOut();
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    Navigator.pushReplacementNamed(context, '/login');
+                  }
+                },
+                child: const Text('Logout'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-              if (context.mounted) {
-                Navigator.pop(context);
-                Navigator.pushReplacementNamed(context, '/login');
-              }
-            },
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1597,13 +1611,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         .where('isRead', isEqualTo: false)
         .snapshots()
         .listen((snapshot) {
-      if (mounted) {
-        setState(() {
-          _hasUnreadNotifications = snapshot.docs.isNotEmpty;
-          _notificationCount = snapshot.docs.length;
+          if (mounted) {
+            setState(() {
+              _hasUnreadNotifications = snapshot.docs.isNotEmpty;
+              _notificationCount = snapshot.docs.length;
+            });
+          }
         });
-      }
-    });
   }
 
   Widget _buildBookList() {
@@ -1618,20 +1632,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
 
     return StreamBuilder<QuerySnapshot>(
-      stream: _selectedListName == 'Library'
-          ? FirebaseFirestore.instance
-              .collectionGroup('books')
-              .where('userId', isEqualTo: user.uid)
-              .orderBy('createdAt', descending: true)
-              .snapshots()
-          : FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .collection('lists')
-              .doc(_selectedListId)
-              .collection('books')
-              .orderBy('createdAt', descending: true)
-              .snapshots(),
+      stream:
+          _selectedListName == 'Library'
+              ? FirebaseFirestore.instance
+                  .collectionGroup('books')
+                  .where('userId', isEqualTo: user.uid)
+                  .orderBy('createdAt', descending: true)
+                  .snapshots()
+              : FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .collection('lists')
+                  .doc(_selectedListId)
+                  .collection('books')
+                  .orderBy('createdAt', descending: true)
+                  .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           print('StreamBuilder error: ${snapshot.error}');
@@ -1683,7 +1698,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             listName = _selectedListName;
           }
 
-          groupedBooks.putIfAbsent(listName, () => []).add(
+          groupedBooks
+              .putIfAbsent(listName, () => [])
+              .add(
                 BookWithList(book: book, listId: listId, listName: listName),
               );
         }
@@ -1712,31 +1729,59 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
     }
 
-    return ListView.builder(
-      itemCount: displayItems.length,
-      itemBuilder: (BuildContext listContext, int index) {
-        final item = displayItems[index];
-        if (item is String) {
-          final listName = item;
-          final bookCount = groupedBooks[listName]?.length ?? 0;
-          final isExpanded = _listManager?.expandedLists[listName] ?? true;
-          final animation = _listManager?.getAnimationForList(listName, this) ??
-              AlwaysStoppedAnimation(1.0);
+    return Container(
+      decoration: BoxDecoration(
+        color: _brightenColor(
+          Theme.of(_buildContext).scaffoldBackgroundColor,
+          0.04,
+        ),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: ListView.builder(
+        padding: const EdgeInsets.only(top: 10),
+        itemCount: displayItems.length,
+        itemBuilder: (BuildContext listContext, int index) {
+          final item = displayItems[index];
+          if (item is String) {
+            final listName = item;
+            final bookCount = groupedBooks[listName]?.length ?? 0;
+            final isExpanded = _listManager?.expandedLists[listName] ?? true;
+            final animation =
+                _listManager?.getAnimationForList(listName, this) ??
+                AlwaysStoppedAnimation(1.0);
 
-          return ListItem(
-            listName: listName,
-            bookCount: bookCount,
-            books: groupedBooks[listName],
-            isExpanded: isExpanded,
-            animation: animation,
-            accentColor: widget.accentColor,
-            onToggleExpanded: (name) =>
-                _listManager?.toggleListExpanded(name, this),
-            onBookTap: _onBookTap,
-          );
-        }
-        return const SizedBox.shrink();
-      },
+            return ListItem(
+              listName: listName,
+              bookCount: bookCount,
+              books: groupedBooks[listName],
+              isExpanded: isExpanded,
+              animation: animation,
+              accentColor: widget.accentColor,
+              onToggleExpanded:
+                  (name) => _listManager?.toggleListExpanded(name, this),
+              onBookTap: _onBookTap,
+              useMaterialYou: widget.onMaterialYouChanged != null,
+              subCardColor: _brightenColor(
+                Theme.of(_buildContext).scaffoldBackgroundColor,
+                0.04,
+              ),
+            );
+          }
+          return const SizedBox.shrink();
+        },
+      ),
+    );
+  }
+
+  Color _brightenColor(Color color, double factor) {
+    return Color.fromARGB(
+      color.alpha,
+      (color.red + (255 - color.red) * factor).clamp(0, 255).toInt(),
+      (color.green + (255 - color.green) * factor).clamp(0, 255).toInt(),
+      (color.blue + (255 - color.blue) * factor).clamp(0, 255).toInt(),
     );
   }
 
@@ -1784,9 +1829,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _isLoading = false;
           _errorMessage = 'Error scanning text: $e';
         });
-        ScaffoldMessenger.of(_buildContext).showSnackBar(
-          SnackBar(content: Text('Error scanning text: $e')),
-        );
+        ScaffoldMessenger.of(
+          _buildContext,
+        ).showSnackBar(SnackBar(content: Text('Error scanning text: $e')));
       }
     }
   }
@@ -1830,8 +1875,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _errorMessage = 'Error processing ISBN: $e';
         _isLoading = false;
       });
-      ScaffoldMessenger.of(_buildContext)
-          .showSnackBar(SnackBar(content: Text('Error processing ISBN: $e')));
+      ScaffoldMessenger.of(
+        _buildContext,
+      ).showSnackBar(SnackBar(content: Text('Error processing ISBN: $e')));
     }
   }
 
@@ -1841,39 +1887,41 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     return showDialog(
       context: _buildContext,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('Paste Book Link'),
-        content: Form(
-          key: formKey,
-          child: TextFormField(
-            controller: controller,
-            decoration: const InputDecoration(
-              hintText: 'Paste Amazon, Google Books, AbeBooks, or eBay link',
+      builder:
+          (BuildContext dialogContext) => AlertDialog(
+            title: const Text('Paste Book Link'),
+            content: Form(
+              key: formKey,
+              child: TextFormField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  hintText:
+                      'Paste Amazon, Google Books, AbeBooks, or eBay link',
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a link';
+                  }
+                  return null;
+                },
+              ),
             ),
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return 'Please enter a link';
-              }
-              return null;
-            },
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  if (formKey.currentState!.validate()) {
+                    Navigator.pop(dialogContext);
+                    await _processBookLink(controller.text);
+                  }
+                },
+                child: const Text('Process'),
+              ),
+            ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(dialogContext);
-                await _processBookLink(controller.text);
-              }
-            },
-            child: const Text('Process'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1892,17 +1940,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         RegExp(r'amazon\.[^/]+/.*?/(\d{9}[\dX])'), // Standard ISBN pattern
         RegExp(r'amazon\.[^/]+/.*?/dp/([A-Z0-9]{10})'), // ASIN pattern
         RegExp(
-            r'amazon\.[^/]+/.*?/product/([A-Z0-9]{10})'), // Product ID pattern
+          r'amazon\.[^/]+/.*?/product/([A-Z0-9]{10})',
+        ), // Product ID pattern
         RegExp(r'amazon\.[^/]+/.*?/title/([^/]+)'), // Title pattern
       ];
 
       // Google Books URL patterns
       final googlePatterns = [
         RegExp(
-            r'books\.google\.[^/]+/books\?.*?isbn=(\d{9}[\dX])'), // ISBN pattern
+          r'books\.google\.[^/]+/books\?.*?isbn=(\d{9}[\dX])',
+        ), // ISBN pattern
         RegExp(r'books\.google\.[^/]+/books\?.*?id=([^&]+)'), // Book ID pattern
         RegExp(
-            r'books\.google\.[^/]+/books\?.*?title=([^&]+)'), // Title pattern
+          r'books\.google\.[^/]+/books\?.*?title=([^&]+)',
+        ), // Title pattern
       ];
 
       // AbeBooks URL patterns
@@ -1911,9 +1962,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         RegExp(r'abebooks\.[^/]+/.*?/title/([^/]+)'), // Title pattern
         RegExp(r'abebooks\.[^/]+/.*?/dp/([A-Z0-9]{10})'), // ASIN pattern
         RegExp(
-            r'abebooks\.[^/]+/.*?/product/([A-Z0-9]{10})'), // Product ID pattern
+          r'abebooks\.[^/]+/.*?/product/([A-Z0-9]{10})',
+        ), // Product ID pattern
         RegExp(
-            r'abebooks\.[^/]+/.*?/search/.*?/([^/]+)'), // Search result pattern
+          r'abebooks\.[^/]+/.*?/search/.*?/([^/]+)',
+        ), // Search result pattern
       ];
 
       // Try to find ISBN or title from Amazon
@@ -1977,25 +2030,37 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
             // Try to find ISBN in the HTML
             final isbnPatterns = [
-              RegExp('ISBN[-\s]*(?:13|10)?[-\s]*[:=]?\s*(\\d{9}[\\dX])',
-                  caseSensitive: false),
               RegExp(
-                  'ISBN[-\s]*(?:13|10)?[-\s]*[:=]?\s*(\\d{3}[- ]?\\d{1,5}[- ]?\\d{1,7}[- ]?\\d{1,6}[- ]?\\d)',
-                  caseSensitive: false),
-              RegExp('data-isbn=["\'](\\d{9}[\\dX])["\']',
-                  caseSensitive: false),
+                'ISBN[-\s]*(?:13|10)?[-\s]*[:=]?\s*(\\d{9}[\\dX])',
+                caseSensitive: false,
+              ),
               RegExp(
-                  'itemprop=["\']isbn["\']\s*content=["\'](\\d{9}[\\dX])["\']',
-                  caseSensitive: false),
+                'ISBN[-\s]*(?:13|10)?[-\s]*[:=]?\s*(\\d{3}[- ]?\\d{1,5}[- ]?\\d{1,7}[- ]?\\d{1,6}[- ]?\\d)',
+                caseSensitive: false,
+              ),
+              RegExp(
+                'data-isbn=["\'](\\d{9}[\\dX])["\']',
+                caseSensitive: false,
+              ),
+              RegExp(
+                'itemprop=["\']isbn["\']\s*content=["\'](\\d{9}[\\dX])["\']',
+                caseSensitive: false,
+              ),
               // AbeBooks specific patterns
-              RegExp('class=["\']isbn["\']>.*?(\\d{9}[\\dX])<',
-                  caseSensitive: false),
+              RegExp(
+                'class=["\']isbn["\']>.*?(\\d{9}[\\dX])<',
+                caseSensitive: false,
+              ),
               RegExp('ISBN-13:.*?(\\d{9}[\\dX])', caseSensitive: false),
               RegExp('ISBN-10:.*?(\\d{9}[\\dX])', caseSensitive: false),
-              RegExp('data-isbn-13=["\'](\\d{9}[\\dX])["\']',
-                  caseSensitive: false),
-              RegExp('data-isbn-10=["\'](\\d{9}[\\dX])["\']',
-                  caseSensitive: false),
+              RegExp(
+                'data-isbn-13=["\'](\\d{9}[\\dX])["\']',
+                caseSensitive: false,
+              ),
+              RegExp(
+                'data-isbn-10=["\'](\\d{9}[\\dX])["\']',
+                caseSensitive: false,
+              ),
             ];
 
             for (var pattern in isbnPatterns) {
@@ -2014,17 +2079,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               final titlePatterns = [
                 RegExp('<h1[^>]*>(.*?)</h1>', caseSensitive: false),
                 RegExp('<title>(.*?)</title>', caseSensitive: false),
-                RegExp('itemprop=["\']name["\']\s*content=["\'](.*?)["\']',
-                    caseSensitive: false),
+                RegExp(
+                  'itemprop=["\']name["\']\s*content=["\'](.*?)["\']',
+                  caseSensitive: false,
+                ),
                 RegExp('data-title=["\'](.*?)["\']', caseSensitive: false),
                 // AbeBooks specific patterns
-                RegExp('class=["\']title["\']>.*?<span[^>]*>(.*?)</span>',
-                    caseSensitive: false),
-                RegExp('class=["\']book-title["\']>(.*?)</',
-                    caseSensitive: false),
+                RegExp(
+                  'class=["\']title["\']>.*?<span[^>]*>(.*?)</span>',
+                  caseSensitive: false,
+                ),
+                RegExp(
+                  'class=["\']book-title["\']>(.*?)</',
+                  caseSensitive: false,
+                ),
                 RegExp('data-title=["\'](.*?)["\']', caseSensitive: false),
-                RegExp('class=["\']product-title["\']>(.*?)</',
-                    caseSensitive: false),
+                RegExp(
+                  'class=["\']product-title["\']>(.*?)</',
+                  caseSensitive: false,
+                ),
               ];
 
               for (var pattern in titlePatterns) {
@@ -2033,18 +2106,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   final value = match.group(1);
                   if (value != null) {
                     // Clean up the title
-                    title = value
-                        .replaceAll(RegExp('<[^>]*>'), '') // Remove HTML tags
-                        .replaceAll(
-                            RegExp('&[^;]+;'), '') // Remove HTML entities
-                        .replaceAll(RegExp('\\s+'), ' ') // Normalize whitespace
-                        .trim();
+                    title =
+                        value
+                            .replaceAll(
+                              RegExp('<[^>]*>'),
+                              '',
+                            ) // Remove HTML tags
+                            .replaceAll(
+                              RegExp('&[^;]+;'),
+                              '',
+                            ) // Remove HTML entities
+                            .replaceAll(
+                              RegExp('\\s+'),
+                              ' ',
+                            ) // Normalize whitespace
+                            .trim();
 
                     // Remove common suffixes like "| AbeBooks" or "- Google Books"
                     title = title.replaceAll(RegExp('\\s*[|]\\s*.*\$'), '');
                     title = title.replaceAll(RegExp('\\s*-\\s*.*\$'), '');
-                    title =
-                        title.replaceAll(RegExp('\\s*\\|\\s*AbeBooks.*\$'), '');
+                    title = title.replaceAll(
+                      RegExp('\\s*\\|\\s*AbeBooks.*\$'),
+                      '',
+                    );
                     title = title.replaceAll(RegExp('\\s*\\|\\s*Book.*\$'), '');
                     break;
                   }
@@ -2056,14 +2140,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             if (isbn == null && title == null) {
               final metaPatterns = [
                 RegExp(
-                    '<meta[^>]*name=["\']description["\'][^>]*content=["\'](.*?)["\']',
-                    caseSensitive: false),
+                  '<meta[^>]*name=["\']description["\'][^>]*content=["\'](.*?)["\']',
+                  caseSensitive: false,
+                ),
                 RegExp(
-                    '<meta[^>]*property=["\']og:title["\'][^>]*content=["\'](.*?)["\']',
-                    caseSensitive: false),
+                  '<meta[^>]*property=["\']og:title["\'][^>]*content=["\'](.*?)["\']',
+                  caseSensitive: false,
+                ),
                 RegExp(
-                    '<meta[^>]*name=["\']keywords["\'][^>]*content=["\'](.*?)["\']',
-                    caseSensitive: false),
+                  '<meta[^>]*name=["\']keywords["\'][^>]*content=["\'](.*?)["\']',
+                  caseSensitive: false,
+                ),
               ];
 
               for (var pattern in metaPatterns) {
@@ -2072,17 +2159,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   final value = match.group(1);
                   if (value != null) {
                     // Clean up the title
-                    title = value
-                        .replaceAll(RegExp('<[^>]*>'), '')
-                        .replaceAll(RegExp('&[^;]+;'), '')
-                        .replaceAll(RegExp('\\s+'), ' ')
-                        .trim();
+                    title =
+                        value
+                            .replaceAll(RegExp('<[^>]*>'), '')
+                            .replaceAll(RegExp('&[^;]+;'), '')
+                            .replaceAll(RegExp('\\s+'), ' ')
+                            .trim();
 
                     // Remove common suffixes
                     title = title.replaceAll(RegExp('\\s*[|]\\s*.*\$'), '');
                     title = title.replaceAll(RegExp('\\s*-\\s*.*\$'), '');
-                    title =
-                        title.replaceAll(RegExp('\\s*\\|\\s*AbeBooks.*\$'), '');
+                    title = title.replaceAll(
+                      RegExp('\\s*\\|\\s*AbeBooks.*\$'),
+                      '',
+                    );
                     title = title.replaceAll(RegExp('\\s*\\|\\s*Book.*\$'), '');
                     break;
                   }
@@ -2119,9 +2209,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _isLoading = false;
           _errorMessage = 'Error processing link: $e';
         });
-        ScaffoldMessenger.of(_buildContext).showSnackBar(
-          SnackBar(content: Text('Error processing link: $e')),
-        );
+        ScaffoldMessenger.of(
+          _buildContext,
+        ).showSnackBar(SnackBar(content: Text('Error processing link: $e')));
       }
     }
   }
