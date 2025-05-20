@@ -9,6 +9,7 @@ import '../models/book.dart';
 import '../services/notification_service.dart';
 import '../services/update_service.dart';
 import '../main.dart';
+import '../widgets/statistics_card.dart';
 
 class SettingsScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
@@ -477,27 +478,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: const Divider(height: 1),
                     ),
                     const SizedBox(height: 16),
-                    ListTile(
-                      title: const Text('Total Books'),
-                      subtitle:
-                          Text('${_settings.totalBooks} books in your library'),
-                    ),
-                    ListTile(
-                      title: const Text('Books Read'),
-                      subtitle: Text('${_settings.readBooks} books completed'),
-                    ),
-                    ListTile(
-                      title: const Text('Reading Progress'),
-                      subtitle: LinearProgressIndicator(
-                        value: _settings.readingProgress / 100,
-                        backgroundColor:
-                            Theme.of(context).colorScheme.surfaceVariant,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Theme.of(context).colorScheme.primary,
-                        ),
+                    InkWell(
+                      onTap: () {
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (context) => StatisticsCard(
+                            totalBooks: _settings.totalBooks,
+                            readBooks: _settings.readBooks,
+                            readingProgress: _settings.readingProgress,
+                          ),
+                        );
+                      },
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ListTile(
+                                  title: const Text('Total Books'),
+                                  subtitle: Text(
+                                      '${_settings.totalBooks} books in your library'),
+                                ),
+                              ),
+                              Expanded(
+                                child: ListTile(
+                                  title: const Text('Books Read'),
+                                  subtitle: Text(
+                                      '${_settings.readBooks} books completed'),
+                                ),
+                              ),
+                            ],
+                          ),
+                          ListTile(
+                            title: const Text('Reading Progress'),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                LinearProgressIndicator(
+                                  value: _settings.readingProgress / 100,
+                                  backgroundColor: Theme.of(context)
+                                      .colorScheme
+                                      .surfaceVariant,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(height: 9),
+                                Center(
+                                  child: Text(
+                                    'Tap for more information',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            trailing: Text(
+                                '${_settings.readingProgress.toStringAsFixed(1)}%'),
+                          ),
+                        ],
                       ),
-                      trailing: Text(
-                          '${_settings.readingProgress.toStringAsFixed(1)}%'),
                     ),
                   ],
                 ),
