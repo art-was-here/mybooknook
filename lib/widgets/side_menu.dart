@@ -77,17 +77,27 @@ class SideMenuState extends State<SideMenu> {
         Positioned.fill(
           child: GestureDetector(
             onHorizontalDragStart: (details) {
-              // Only allow drag if we're at the root route
               if (widget.navigatorKey.currentContext != null) {
                 final canPop =
                     Navigator.canPop(widget.navigatorKey.currentContext!);
-                if (!canPop) {
+                final screenWidth = MediaQuery.of(context).size.width;
+                final screenHeight = MediaQuery.of(context).size.height;
+
+                // Ignore swipes that start near the edges (within 15% of left or right edge)
+                final isNearLeftEdge =
+                    details.globalPosition.dx < screenWidth * 0.15;
+                final isNearRightEdge =
+                    details.globalPosition.dx > screenWidth * 0.85;
+
+                // Only activate if NOT near any edge and at root navigation
+                if (!canPop && !isNearLeftEdge && !isNearRightEdge) {
                   _dragStartX = details.globalPosition.dx;
                 }
               }
             },
             onHorizontalDragUpdate: (details) {
-              if (_dragStartX < 20 && !_isMenuOpen) {
+              // Only allow drag if we started from a valid position (not near edges)
+              if (_dragStartX > 0 && !_isMenuOpen) {
                 setState(() {
                   final delta = details.globalPosition.dx - _dragStartX;
                   if (delta > 0) {
@@ -98,14 +108,18 @@ class SideMenuState extends State<SideMenu> {
             },
             onHorizontalDragEnd: (details) {
               final velocity = details.primaryVelocity ?? 0;
-              setState(() {
-                if (velocity > 300 || _currentDragX > _menuWidth / 3) {
-                  _isMenuOpen = true;
-                } else {
-                  _isMenuOpen = false;
-                }
-                _currentDragX = _isMenuOpen ? _menuWidth : 0.0;
-              });
+              // Only trigger if we started from a valid position
+              if (_dragStartX > 0) {
+                setState(() {
+                  if ((velocity > 200 && _currentDragX > 10) ||
+                      _currentDragX > _menuWidth / 3) {
+                    _isMenuOpen = true;
+                  } else {
+                    _isMenuOpen = false;
+                  }
+                  _currentDragX = _isMenuOpen ? _menuWidth : 0.0;
+                });
+              }
             },
             child: childWidget,
           ),
