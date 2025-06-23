@@ -519,8 +519,10 @@ class _UserPageState extends State<UserPage> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Account age: $days days, $hours hours, $minutes minutes',
-                style: Theme.of(context).textTheme.bodyMedium,
+                'Account age: $days days, $hours hrs, $minutes mins',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontSize: Theme.of(context).textTheme.bodyMedium!.fontSize! - 1,
+                ),
               ),
               const SizedBox(height: 4),
               Row(
